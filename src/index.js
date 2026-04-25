@@ -16,6 +16,9 @@ import * as disconnectCommand from './commands/disconnect.js';
 import * as volumeCommand from './commands/volume.js';
 import * as roleCommand from './commands/role.js';
 import * as createroleCommand from './commands/createrole.js';
+import * as osuLinkCommand from './commands/osu-link.js';
+import * as osuProfileCommand from './commands/osu-profile.js';
+import * as osuRecentCommand from './commands/osu-recent.js';
 
 config();
 
@@ -36,6 +39,9 @@ client.commands.set(disconnectCommand.data.name, disconnectCommand);
 client.commands.set(volumeCommand.data.name, volumeCommand);
 client.commands.set(roleCommand.data.name, roleCommand);
 client.commands.set(createroleCommand.data.name, createroleCommand);
+client.commands.set(osuLinkCommand.data.name, osuLinkCommand);
+client.commands.set(osuProfileCommand.data.name, osuProfileCommand);
+client.commands.set(osuRecentCommand.data.name, osuRecentCommand);
 
 // 音楽プレイヤー初期化
 client.musicPlayer = new MusicPlayer(client);
