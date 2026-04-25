@@ -26,6 +26,16 @@ export async function testConnection() {
         volume INTEGER DEFAULT 100
       )
     `);
+
+    // osu! 連携情報保存用テーブル
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_links (
+        discord_id VARCHAR(255) PRIMARY KEY,
+        osu_username VARCHAR(255) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
     
     client.release();
     log('PostgreSQL接続成功', 'success');
