@@ -22,7 +22,7 @@ export async function execute(interaction) {
   }
 
   try {
-    const user = await fetchOsuUser(username);
+    const user = await fetchOsuUser(username, null);
     await upsertUserLink(interaction.user.id, user.username);
 
     await interaction.editReply(

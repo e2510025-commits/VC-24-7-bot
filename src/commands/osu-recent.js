@@ -5,6 +5,7 @@ import {
   fetchBeatmap,
   fetchOsuUser,
   fetchRecentScores,
+  getModeLabel,
   formatNumber,
   formatRatioPercent,
   toDiscordTimestamp
@@ -36,6 +37,18 @@ export const data = new SlashCommandBuilder()
     option
       .setName('username')
       .setDescription('表示するosu!ユーザー名（省略時は連携済みユーザー）')
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
+      .setName('mode')
+      .setDescription('表示するモード')
+      .addChoices(
+        { name: 'std', value: 'osu' },
+        { name: 'mania', value: 'mania' },
+        { name: 'catch', value: 'fruits' },
+        { name: 'taiko', value: 'taiko' }
+      )
       .setRequired(false)
   );
 
@@ -86,6 +99,8 @@ export async function execute(interaction) {
   await interaction.deferReply();
 
   try {
+    const mode = interaction.options.getString('mode') || 'osu';
+    const modeLabel = getModeLabel(mode);
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
       return interaction.editReply(
@@ -93,8 +108,8 @@ export async function execute(interaction) {
       );
     }
 
-    const user = await fetchOsuUser(targetUsername);
-    const [score] = await fetchRecentScores(user.id, 'osu', 1);
+    const user = await fetchOsuUser(targetUsername, mode);
+    const [score] = await fetchRecentScores(user.id, mode, 1);
 
     if (!score) {
       return interaction.editReply('❌ 最新プレイが見つかりませんでした');
@@ -123,7 +138,7 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor(toHexColor(score.rank))
-      .setTitle(`${user.username} の最新プレイ`)
+      .setTitle(`${user.username} の最新プレイ [${modeLabel}]`)
       .setURL(scoreUrl)
       .setDescription(`**${artist} - ${title} [${version}]**`)
       .addFields(

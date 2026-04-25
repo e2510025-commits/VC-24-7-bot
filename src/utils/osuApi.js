@@ -22,6 +22,21 @@ export class OsuApiError extends Error {
 }
 
 const numberFormatter = new Intl.NumberFormat('ja-JP');
+const MODE_ALIAS_MAP = {
+  std: 'osu',
+  standard: 'osu',
+  osu: 'osu',
+  mania: 'mania',
+  catch: 'fruits',
+  fruits: 'fruits',
+  taiko: 'taiko'
+};
+const MODE_LABEL_MAP = {
+  osu: 'std',
+  mania: 'mania',
+  fruits: 'catch',
+  taiko: 'taiko'
+};
 
 function parseOsuClientId(rawValue) {
   const clientId = Number(rawValue);
@@ -154,27 +169,82 @@ async function osuGet(path, query = {}, canRetry = true) {
   return payload;
 }
 
-export async function fetchOsuUser(usernameOrId, mode = 'osu') {
-  const target = String(usernameOrId || '').trim();
+async function osuGetOrNull(path, query = {}) {
+  try {
+    return await osuGet(path, query);
+  } catch (error) {
+    if (error instanceof OsuApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function buildUserPath(identifier, mode = null) {
+  const suffix = mode ? `/${mode}` : '';
+  return `/api/v2/users/${encodeURIComponent(identifier)}${suffix}`;
+}
+
+export function normalizeOsuMode(mode = 'osu') {
+  const key = String(mode || 'osu').trim().toLowerCase();
+  return MODE_ALIAS_MAP[key] || 'osu';
+}
+
+export function getModeLabel(mode = 'osu') {
+  const normalized = normalizeOsuMode(mode);
+  return MODE_LABEL_MAP[normalized] || normalized;
+}
+
+export async function fetchOsuUser(usernameOrId, mode = null) {
+  const rawTarget = String(usernameOrId || '').trim();
+  if (!rawTarget) {
+    throw new OsuApiError('osu! ユーザー名を指定してください', 400);
+  }
+
+  const target = rawTarget.startsWith('@') ? rawTarget.slice(1) : rawTarget;
   if (!target) {
     throw new OsuApiError('osu! ユーザー名を指定してください', 400);
   }
 
+  const normalizedMode = mode ? normalizeOsuMode(mode) : null;
   const isNumericId = /^\d+$/.test(target);
+  const atTarget = `@${target}`;
+
+  const attempts = [];
 
   if (isNumericId) {
-    try {
-      return await osuGet(`/api/v2/users/${encodeURIComponent(target)}/${mode}`);
-    } catch (error) {
-      if (!(error instanceof OsuApiError) || error.status !== 404) {
-        throw error;
-      }
-      // Numeric usernames exist, so retry as username lookup when ID lookup fails.
-      return osuGet(`/api/v2/users/${encodeURIComponent(`@${target}`)}/${mode}`);
+    attempts.push({ path: buildUserPath(target, normalizedMode) });
+    attempts.push({ path: buildUserPath(atTarget, normalizedMode) });
+    attempts.push({ path: buildUserPath(target, normalizedMode), query: { key: 'username' } });
+  } else {
+    attempts.push({ path: buildUserPath(atTarget, normalizedMode) });
+    attempts.push({ path: buildUserPath(target, normalizedMode), query: { key: 'username' } });
+    attempts.push({ path: buildUserPath(target, normalizedMode) });
+  }
+
+  for (const attempt of attempts) {
+    const user = await osuGetOrNull(attempt.path, attempt.query || {});
+    if (user) {
+      return user;
     }
   }
 
-  return osuGet(`/api/v2/users/${encodeURIComponent(`@${target}`)}/${mode}`);
+  const lookedUpUser = await osuGetOrNull('/api/v2/users/lookup', {
+    key: 'username',
+    username: target
+  });
+
+  if (lookedUpUser?.id) {
+    if (normalizedMode) {
+      const userByMode = await osuGetOrNull(buildUserPath(String(lookedUpUser.id), normalizedMode));
+      if (userByMode) {
+        return userByMode;
+      }
+    }
+    return lookedUpUser;
+  }
+
+  throw new OsuApiError('指定した osu! ユーザーが見つかりませんでした', 404);
 }
 
 export async function fetchRecentScores(userIdOrName, mode = 'osu', limit = 1) {
@@ -183,8 +253,10 @@ export async function fetchRecentScores(userIdOrName, mode = 'osu', limit = 1) {
     throw new OsuApiError('osu! ユーザー名を指定してください', 400);
   }
 
+  const normalizedMode = normalizeOsuMode(mode);
+
   return osuGet(`/api/v2/users/${encodeURIComponent(target)}/scores/recent`, {
-    mode,
+    mode: normalizedMode,
     include_fails: 1,
     limit
   });

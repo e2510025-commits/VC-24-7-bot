@@ -3,6 +3,7 @@ import { getLinkedOsuUsername } from '../database/supabase.js';
 import {
   OsuApiError,
   fetchOsuUser,
+  getModeLabel,
   formatNumber,
   formatPercent,
   formatPlayTime
@@ -16,6 +17,18 @@ export const data = new SlashCommandBuilder()
     option
       .setName('username')
       .setDescription('表示するosu!ユーザー名（省略時は連携済みユーザー）')
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
+      .setName('mode')
+      .setDescription('表示するモード')
+      .addChoices(
+        { name: 'std', value: 'osu' },
+        { name: 'mania', value: 'mania' },
+        { name: 'catch', value: 'fruits' },
+        { name: 'taiko', value: 'taiko' }
+      )
       .setRequired(false)
   );
 
@@ -32,6 +45,8 @@ export async function execute(interaction) {
   await interaction.deferReply();
 
   try {
+    const mode = interaction.options.getString('mode') || 'osu';
+    const modeLabel = getModeLabel(mode);
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
       return interaction.editReply(
@@ -39,7 +54,7 @@ export async function execute(interaction) {
       );
     }
 
-    const user = await fetchOsuUser(targetUsername);
+    const user = await fetchOsuUser(targetUsername, mode);
     const stats = user.statistics || {};
     const grades = stats.grade_counts || {};
     const level = stats.level || {};
@@ -51,7 +66,7 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor('#1EA7FD')
-      .setTitle(`${user.username} の osu!プロフィール`)
+      .setTitle(`${user.username} の osu!プロフィール [${modeLabel}]`)
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
       .setDescription(`**グローバルランク:** ${globalRank}\n**国別ランク (${user.country_code || 'N/A'}):** ${countryRank}`)
       .addFields(
