@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
 import { getGuildOsuSettings, upsertGuildOsuSettings } from '../database/osuGuildSettings.js';
 import { metricLabel } from '../utils/osuGrowthUtils.js';
 import { log } from '../utils/logger.js';
@@ -154,7 +154,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
   try {
     if (!interaction.guildId) {
