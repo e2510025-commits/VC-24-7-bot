@@ -69,9 +69,9 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     ? `https://osu.ppy.sh/beatmapsets/${beatmapsetId}`
     : null;
   
-  // リプレイリンク
+  // リプレイダウンロードリンク（モード指定なし）
   const replayUrl = score?.id
-    ? `https://osu.ppy.sh/scores/${score.mode || mode}/${score.id}/download`
+    ? `https://osu.ppy.sh/scores/${score.id}/download`
     : null;
   
   const pp = toFiniteNumber(score?.pp);
@@ -114,7 +114,7 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     links.push(`[譜面](${beatmapUrl})`);
   }
   if (replayUrl) {
-    links.push(`[リプレイ](${replayUrl})`);
+    links.push(`[リプレイ・ダウンロード](${replayUrl})`);
   }
   const linksText = links.length > 0 ? links.join(' • ') : '';
   
