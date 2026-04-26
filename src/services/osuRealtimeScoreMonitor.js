@@ -108,12 +108,6 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     }
   }
   
-  // デバッグログ
-  if (previousStats) {
-    const { log: debugLog } = await import('../utils/logger.js');
-    debugLog(`前回比計算: PP ${previousPp} → ${currentPp}, Rank ${previousRank} → ${currentRank}`, 'info');
-  }
-  
   // リンク行を作成
   const links = [];
   if (beatmapUrl) {
