@@ -48,21 +48,7 @@ function formatCombo(comboValue) {
   return `${formatNumber(Math.trunc(value))}x`;
 }
 
-function getRankEmoji(rank) {
-  const rankMap = {
-    'XH': '🥇',
-    'X': '🥇',
-    'SH': '🥈',
-    'S': '🥈',
-    'A': '🥉',
-    'B': '📘',
-    'C': '📗',
-    'D': '📙'
-  };
-  return rankMap[rank] || '📄';
-}
-
-function buildScoreEmbed({ user, mode, score }) {
+function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
   const beatmap = score?.beatmap || {};
   const beatmapset = score?.beatmapset || {};
   const statistics = score?.statistics || {};
@@ -82,14 +68,42 @@ function buildScoreEmbed({ user, mode, score }) {
   const miss = toFiniteNumber(statistics?.miss);
   const rank = score?.rank || 'F';
   
+  // 順位情報
+  const currentRank = toFiniteNumber(userStats?.global_rank);
+  const previousRank = toFiniteNumber(previousStats?.global_rank);
+  let rankText = currentRank ? `#${formatNumber(currentRank)}` : 'N/A';
+  
+  if (currentRank && previousRank && previousRank > 0) {
+    const rankDiff = previousRank - currentRank;
+    if (rankDiff > 0) {
+      rankText += ` (▲${formatNumber(rankDiff)})`;
+    } else if (rankDiff < 0) {
+      rankText += ` (▼${formatNumber(Math.abs(rankDiff))})`;
+    }
+  }
+  
+  // PP情報
+  const currentPp = toFiniteNumber(userStats?.pp);
+  const previousPp = toFiniteNumber(previousStats?.pp);
+  let ppText = currentPp ? `${currentPp.toFixed(2)}pp` : 'N/A';
+  
+  if (currentPp && previousPp) {
+    const ppDiff = currentPp - previousPp;
+    if (ppDiff > 0) {
+      ppText += ` (+${ppDiff.toFixed(2)})`;
+    } else if (ppDiff < 0) {
+      ppText += ` (${ppDiff.toFixed(2)})`;
+    }
+  }
+  
   const embed = new EmbedBuilder()
     .setColor('#FF66AA')
-    .setTitle(`${getRankEmoji(rank)} ${user.username} [${getModeLabel(mode)}]`)
+    .setTitle(`${user.username} [${getModeLabel(mode)}]`)
     .setURL(scoreUrl)
     .setDescription(`**${title}**`)
     .addFields(
       {
-        name: 'PP',
+        name: 'スコアPP',
         value: pp === null ? 'N/A' : `${pp.toFixed(2)}pp`,
         inline: true
       },
@@ -117,7 +131,18 @@ function buildScoreEmbed({ user, mode, score }) {
         name: 'MOD',
         value: mods,
         inline: true
+      },
+      {
+        name: '総合PP',
+        value: ppText,
+        inline: true
+      },
+      {
+        name: 'グローバル順位',
+        value: rankText,
+        inline: true
       }
+    )
     )
     .setTimestamp(new Date(score?.created_at || Date.now()));
   
@@ -237,6 +262,20 @@ async function monitorCycle(client) {
 
       for (const mode of modes) {
         try {
+          // ユーザー情報を取得（統計情報含む）
+          const { fetchOsuUser } = await import('../utils/osuApi.js');
+          const { getLatestSnapshot } = await import('../database/osuSnapshots.js');
+          
+          const user = await fetchOsuUser(osuUserId, mode);
+          const userStats = user.statistics || {};
+          
+          // 前回のスナップショットを取得
+          const previousSnapshot = await getLatestSnapshot({ osuUserId, mode });
+          const previousStats = previousSnapshot ? {
+            pp: previousSnapshot.pp,
+            global_rank: previousSnapshot.global_rank
+          } : null;
+          
           // 最新5件のスコアを取得（ユーザーIDを使用）
           const recentScores = await fetchRecentScores(osuUserId, mode, 5);
           
@@ -262,7 +301,9 @@ async function monitorCycle(client) {
                 username: osuUsername
               },
               mode,
-              score
+              score,
+              userStats,
+              previousStats
             });
 
             const sent = await sendScoreToGuildChannels(
