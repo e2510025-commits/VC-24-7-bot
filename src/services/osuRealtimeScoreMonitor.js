@@ -143,7 +143,6 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
         inline: true
       }
     )
-    )
     .setTimestamp(new Date(score?.created_at || Date.now()));
   
   if (beatmapset?.covers?.card) {
