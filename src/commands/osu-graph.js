@@ -379,22 +379,34 @@ function buildCompareUsersChartConfig({ userDatasets, metric }) {
     { border: '#9B59B6', bg: 'rgba(155, 89, 182, 0.20)' }
   ];
 
+  // 全ユーザーの日付ラベルを統合（重複排除してソート）
+  const allLabels = [...new Set(userDatasets.flatMap(u => u.labels))].sort();
+
+  // 各ユーザーのデータを統一されたラベルに合わせる
   const datasets = userDatasets.map((userData, index) => {
     const color = colors[index % colors.length];
+    
+    // ラベルとデータのマップを作成
+    const dataMap = new Map();
+    userData.labels.forEach((label, i) => {
+      dataMap.set(label, userData.values[i]);
+    });
+    
+    // 統一されたラベルに対応するデータを作成（存在しない場合はnull）
+    const alignedData = allLabels.map(label => dataMap.get(label) ?? null);
+    
     return {
       label: userData.username,
-      data: userData.values,
+      data: alignedData,
       borderColor: color.border,
       backgroundColor: color.bg,
       pointRadius: 3,
       pointHoverRadius: 5,
       fill: false,
-      tension: 0.25
+      tension: 0.25,
+      spanGaps: true // nullをスキップして線を繋ぐ
     };
   });
-
-  // 全ユーザーの日付ラベルを統合（重複排除してソート）
-  const allLabels = [...new Set(userDatasets.flatMap(u => u.labels))].sort();
 
   return {
     type: 'line',
