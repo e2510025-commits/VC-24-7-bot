@@ -7,6 +7,7 @@ import { log } from '../utils/logger.js';
 let monitorTimer = null;
 let isRunning = false;
 const processedScores = new Set();
+const userStatsCache = new Map(); // ユーザーごとの最新統計をキャッシュ
 const SCORE_CACHE_SIZE = 1000;
 
 function parseModes() {
@@ -263,17 +264,15 @@ async function monitorCycle(client) {
         try {
           // ユーザー情報を取得（統計情報含む）
           const { fetchOsuUser } = await import('../utils/osuApi.js');
-          const { getLatestSnapshot } = await import('../database/osuSnapshots.js');
           
           const user = await fetchOsuUser(osuUserId, mode);
           const userStats = user.statistics || {};
           
-          // 前回のスナップショットを取得
-          const previousSnapshot = await getLatestSnapshot({ osuUserId, mode });
-          const previousStats = previousSnapshot ? {
-            pp: previousSnapshot.pp,
-            global_rank: previousSnapshot.global_rank
-          } : null;
+          // キャッシュキー
+          const cacheKey = `${osuUserId}:${mode}`;
+          
+          // 前回キャッシュされた統計を取得
+          const previousStats = userStatsCache.get(cacheKey) || null;
           
           // 最新5件のスコアを取得（ユーザーIDを使用）
           const recentScores = await fetchRecentScores(osuUserId, mode, 5);
@@ -314,6 +313,12 @@ async function monitorCycle(client) {
 
             if (sent > 0) {
               scoreCount += 1;
+              
+              // スコア投稿成功後、現在の統計をキャッシュに保存
+              userStatsCache.set(cacheKey, {
+                pp: userStats.pp,
+                global_rank: userStats.global_rank
+              });
             }
 
             processedScores.add(scoreKey);
@@ -372,6 +377,7 @@ export function stopOsuRealtimeScoreMonitor() {
     clearInterval(monitorTimer);
     monitorTimer = null;
     processedScores.clear();
+    userStatsCache.clear();
     log('osu! リアルタイムスコア監視を停止', 'info');
   }
 }
