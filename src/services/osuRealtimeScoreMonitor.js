@@ -199,20 +199,43 @@ async function monitorCycle(client) {
 
     for (const trackedUser of trackedUsers) {
       const discordId = String(trackedUser.discord_id || '').trim();
-      const osuUserId = toFiniteNumber(trackedUser.osu_user_id);
-      const osuUsername = String(trackedUser.osu_username || '').trim();
+      let osuUserId = toFiniteNumber(trackedUser.osu_user_id);
+      let osuUsername = String(trackedUser.osu_username || '').trim();
 
       if (!discordId || !osuUsername) {
         continue;
       }
 
+      // osuUserIdが0または無効な場合、ユーザー情報を再取得して更新
+      if (!osuUserId || osuUserId === 0) {
+        try {
+          const { fetchOsuUser } = await import('../utils/osuApi.js');
+          const { upsertTrackedOsuUser } = await import('../database/osuTrackedUsers.js');
+          
+          const user = await fetchOsuUser(osuUsername, modes[0]);
+          osuUserId = user.id;
+          
+          // データベースを更新
+          await upsertTrackedOsuUser({
+            discordId,
+            osuUserId: user.id,
+            osuUsername: user.username
+          });
+          
+          log(`osu! ユーザーID更新: ${osuUsername} -> ${user.id}`, 'success');
+        } catch (error) {
+          log(`osu! ユーザーID取得失敗: ${osuUsername} - ${error.message}`, 'error');
+          continue;
+        }
+      }
+
       for (const mode of modes) {
         try {
-          // 最新5件のスコアを取得（ユーザー名を使用）
-          const recentScores = await fetchRecentScores(osuUsername, mode, 5);
+          // 最新5件のスコアを取得（ユーザーIDを使用）
+          const recentScores = await fetchRecentScores(osuUserId, mode, 5);
           
           for (const score of recentScores) {
-            const scoreKey = `${osuUserId || osuUsername}:${mode}:${score.id}`;
+            const scoreKey = `${osuUserId}:${mode}:${score.id}`;
             
             // 既に処理済みのスコアはスキップ
             if (processedScores.has(scoreKey)) {
@@ -250,7 +273,7 @@ async function monitorCycle(client) {
             processedScores.add(scoreKey);
           }
         } catch (error) {
-          log(`osu! リアルタイムスコア取得失敗: ${trackedUser.osu_username} [${mode}] - ${error.message}`, 'error');
+          log(`osu! リアルタイムスコア取得失敗: ${osuUsername} [${mode}] - ${error.message}`, 'error');
           log(`エラー詳細: discordId=${discordId}, osuUserId=${osuUserId}, osuUsername=${osuUsername}`, 'error');
         }
       }
