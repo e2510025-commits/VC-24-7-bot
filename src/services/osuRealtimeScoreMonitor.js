@@ -203,8 +203,11 @@ async function monitorCycle(client) {
       let osuUsername = String(trackedUser.osu_username || '').trim();
 
       if (!discordId || !osuUsername) {
+        log(`スキップ: discordId=${discordId}, osuUsername="${osuUsername}"`, 'info');
         continue;
       }
+
+      log(`処理中: ${osuUsername} (ID: ${osuUserId || 'なし'})`, 'info');
 
       // osuUserIdが0または無効な場合、ユーザー情報を再取得して更新
       if (!osuUserId || osuUserId === 0) {
@@ -212,8 +215,10 @@ async function monitorCycle(client) {
           const { fetchOsuUser } = await import('../utils/osuApi.js');
           const { upsertTrackedOsuUser } = await import('../database/osuTrackedUsers.js');
           
+          log(`osu! ユーザーID取得試行: ${osuUsername}`, 'info');
           const user = await fetchOsuUser(osuUsername, modes[0]);
           osuUserId = user.id;
+          osuUsername = user.username; // 正規化されたユーザー名を使用
           
           // データベースを更新
           await upsertTrackedOsuUser({
@@ -222,9 +227,10 @@ async function monitorCycle(client) {
             osuUsername: user.username
           });
           
-          log(`osu! ユーザーID更新: ${osuUsername} -> ${user.id}`, 'success');
+          log(`osu! ユーザーID更新成功: ${user.username} (ID: ${user.id})`, 'success');
         } catch (error) {
           log(`osu! ユーザーID取得失敗: ${osuUsername} - ${error.message}`, 'error');
+          log(`エラースタック: ${error.stack}`, 'error');
           continue;
         }
       }
