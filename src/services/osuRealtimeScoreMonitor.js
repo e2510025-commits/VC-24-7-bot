@@ -70,9 +70,13 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     : null;
   
   // リプレイダウンロードリンク（モード指定なし）
-  const replayUrl = score?.id
-    ? `https://osu.ppy.sh/scores/${score.id}/download`
+  // score.best_idがある場合はそれを使用、なければscore.idを使用
+  const scoreIdForReplay = score?.best_id || score?.id;
+  const replayUrl = scoreIdForReplay
+    ? `https://osu.ppy.sh/scores/${scoreIdForReplay}/download`
     : null;
+  
+  log(`[リプレイURL] Score ID: ${score?.id}, Best ID: ${score?.best_id}, User ID: ${score?.user_id}, URL: ${replayUrl}`, 'info');
   
   const pp = toFiniteNumber(score?.pp);
   const accuracy = toFiniteNumber(score?.accuracy);
@@ -298,8 +302,12 @@ async function monitorCycle(client) {
           // 最新5件のスコアを取得（ユーザーIDを使用）
           const recentScores = await fetchRecentScores(osuUserId, mode, 5);
           
+          log(`[スコア取得] ${osuUsername} [${mode}] - ${recentScores.length}件のスコアを取得`, 'info');
+          
           for (const score of recentScores) {
             const scoreKey = `${osuUserId}:${mode}:${score.id}`;
+            
+            log(`[スコアチェック] Score ID: ${score.id}, Key: ${scoreKey}, 処理済み: ${processedScores.has(scoreKey)}`, 'info');
             
             // スコアのユーザーIDが一致するか確認
             if (score.user_id && score.user_id !== osuUserId) {
@@ -315,8 +323,13 @@ async function monitorCycle(client) {
             // スコアが1時間以内のものだけ処理
             const scoreTime = new Date(score.created_at).getTime();
             const now = Date.now();
+            const ageMinutes = Math.floor((now - scoreTime) / 60000);
+            
+            log(`[スコア時刻] Score ID: ${score.id}, 経過時間: ${ageMinutes}分`, 'info');
+            
             if (now - scoreTime > 60 * 60 * 1000) {
               processedScores.add(scoreKey);
+              log(`[スコアスキップ] 古すぎるスコア (${ageMinutes}分前)`, 'info');
               continue;
             }
 
@@ -331,7 +344,7 @@ async function monitorCycle(client) {
               previousStats
             });
 
-            log(`スコア投稿準備: ${osuUsername} (ID: ${osuUserId}) - Score ID: ${score.id}`, 'info');
+            log(`[スコア投稿準備] ${osuUsername} (ID: ${osuUserId}) - Score ID: ${score.id}, Score User ID: ${score.user_id}`, 'info');
 
             const sent = await sendScoreToGuildChannels(
               client,
