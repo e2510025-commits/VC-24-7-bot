@@ -307,6 +307,12 @@ async function monitorCycle(client) {
           for (const score of recentScores) {
             const scoreKey = `${osuUserId}:${mode}:${score.id}`;
             
+            // スコアのユーザーIDが一致するか確認
+            if (score.user_id && score.user_id !== osuUserId) {
+              log(`スコアのユーザーID不一致: expected ${osuUserId}, got ${score.user_id}`, 'error');
+              continue;
+            }
+            
             // 既に処理済みのスコアはスキップ
             if (processedScores.has(scoreKey)) {
               continue;
@@ -330,6 +336,8 @@ async function monitorCycle(client) {
               userStats,
               previousStats
             });
+
+            log(`スコア投稿準備: ${osuUsername} (ID: ${osuUserId}) - Score ID: ${score.id}`, 'info');
 
             const sent = await sendScoreToGuildChannels(
               client,
