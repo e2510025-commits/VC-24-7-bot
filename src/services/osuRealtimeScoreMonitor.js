@@ -1,7 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
-import { listTrackedOsuUsers } from '../database/osuTrackedUsers.js';
+import { listTrackedOsuUsers, upsertTrackedOsuUser } from '../database/osuTrackedUsers.js';
 import { getGuildOsuSettings } from '../database/osuGuildSettings.js';
-import { fetchRecentScores, getModeLabel, formatNumber, normalizeOsuMode } from '../utils/osuApi.js';
+import { fetchRecentScores, getModeLabel, formatNumber, normalizeOsuMode, fetchOsuUser } from '../utils/osuApi.js';
 import { log } from '../utils/logger.js';
 
 let monitorTimer = null;
@@ -258,9 +258,6 @@ async function monitorCycle(client) {
       // osuUserIdが0または無効な場合、ユーザー情報を再取得して更新
       if (!osuUserId || osuUserId === 0) {
         try {
-          const { fetchOsuUser } = await import('../utils/osuApi.js');
-          const { upsertTrackedOsuUser } = await import('../database/osuTrackedUsers.js');
-          
           log(`osu! ユーザーID取得試行: ${osuUsername}`, 'info');
           const user = await fetchOsuUser(osuUsername, modes[0]);
           osuUserId = user.id;
@@ -284,8 +281,6 @@ async function monitorCycle(client) {
       for (const mode of modes) {
         try {
           // ユーザー情報を取得（統計情報含む）
-          const { fetchOsuUser } = await import('../utils/osuApi.js');
-          
           const user = await fetchOsuUser(osuUserId, mode);
           const userStats = user.statistics || {};
           
