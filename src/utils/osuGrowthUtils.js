@@ -2,6 +2,7 @@ import { formatNumber, formatPlayTime } from './osuApi.js';
 
 export const PERIOD_MAP = {
   '24h': { label: '24h', ms: 24 * 60 * 60 * 1000 },
+  '1d': { label: '1日', ms: 24 * 60 * 60 * 1000 },
   '1week': { label: '1week', ms: 7 * 24 * 60 * 60 * 1000 },
   '1month': { label: '1month', ms: 30 * 24 * 60 * 60 * 1000 },
   '7d': { label: '7日', ms: 7 * 24 * 60 * 60 * 1000 },

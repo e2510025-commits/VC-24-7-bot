@@ -190,34 +190,55 @@ function formatCombo(comboValue) {
   return `${formatNumber(Math.trunc(value))}x`;
 }
 
-function buildBestScoreComment({ ppDelta, accuracyDelta, missDelta, comboDelta }) {
-  const comments = [];
+function analyzeBestScoreUpdate({ ppDelta, accuracyDelta, missDelta, comboDelta }) {
+  const ppUp = ppDelta !== null && ppDelta > 0;
+  const highPpJump = ppDelta !== null && ppDelta >= 15;
+  const accUp = accuracyDelta !== null && accuracyDelta > 0.002;
+  const missDown = missDelta !== null && missDelta < 0;
+  const comboUp = comboDelta !== null && comboDelta > 0;
 
-  if (ppDelta !== null) {
-    if (ppDelta >= 20) {
-      comments.push('大幅なPP更新。難度帯の上振れが出ています。');
-    } else if (ppDelta >= 8) {
-      comments.push('PPがしっかり伸びています。再現できると安定成長です。');
-    }
+  if (ppUp && accUp && missDown && comboUp) {
+    return {
+      type: '総合改善型',
+      confidence: '高',
+      comment: '精度・安定感・PPが同時に改善しています。理想的な更新です。',
+      action: '同難度帯を2〜3曲ローテして再現率を固めると伸びます。'
+    };
   }
 
-  if (accuracyDelta !== null && accuracyDelta > 0.002) {
-    comments.push('精度が改善。判定コントロールが良化しています。');
+  if (highPpJump && (!accUp || !missDown)) {
+    return {
+      type: '地力突破型',
+      confidence: '中',
+      comment: '高PP譜面での上振れ更新です。難度突破の兆しがあります。',
+      action: '同系統のやや易しめ譜面で成功率を上げて定着させましょう。'
+    };
   }
 
-  if (missDelta !== null && missDelta < 0) {
-    comments.push('Miss減少。地力または譜面理解が進んでいます。');
+  if (ppUp && accUp && missDown) {
+    return {
+      type: '精度主導型',
+      confidence: '高',
+      comment: '判定精度とMiss管理が更新を牽引しています。',
+      action: 'ウォームアップに低難度精度譜面を入れると再現しやすいです。'
+    };
   }
 
-  if (comboDelta !== null && comboDelta > 0) {
-    comments.push('最大コンボ更新。終盤の安定感が上がっています。');
+  if (ppUp && (missDown || comboUp)) {
+    return {
+      type: '安定感向上型',
+      confidence: '中',
+      comment: '終盤の崩れが減り、PPに変換できています。',
+      action: 'ロング譜面の終盤集中を意識するとさらに伸ばせます。'
+    };
   }
 
-  if (comments.length === 0) {
-    return 'ベスト更新を確認。引き続き同系統譜面で再現性を高めましょう。';
-  }
-
-  return comments.slice(0, 2).join('\n');
+  return {
+    type: '更新確認',
+    confidence: '低',
+    comment: 'ベスト更新を確認しました。要因は複合またはデータ不足です。',
+    action: '次回は同傾向譜面で再挑戦し、更新要因の再現を確認しましょう。'
+  };
 }
 
 function buildBestPlayEmbed({ user, mode, bestScore, previousRecord }) {
@@ -248,6 +269,7 @@ function buildBestPlayEmbed({ user, mode, bestScore, previousRecord }) {
   const scoreUrl = scoreId
     ? `https://osu.ppy.sh/scores/${bestScore.mode || mode}/${scoreId}`
     : `https://osu.ppy.sh/users/${user.id}`;
+  const analysis = analyzeBestScoreUpdate({ ppDelta, accuracyDelta, missDelta, comboDelta });
 
   return new EmbedBuilder()
     .setColor('#3498DB')
@@ -296,12 +318,17 @@ function buildBestPlayEmbed({ user, mode, bestScore, previousRecord }) {
       },
       {
         name: '自動コメント',
-        value: buildBestScoreComment({
-          ppDelta,
-          accuracyDelta,
-          missDelta,
-          comboDelta
-        }),
+        value: analysis.comment,
+        inline: false
+      },
+      {
+        name: '更新タイプ',
+        value: `${analysis.type} (信頼度: ${analysis.confidence})`,
+        inline: true
+      },
+      {
+        name: '次アクション',
+        value: analysis.action,
         inline: true
       }
     )

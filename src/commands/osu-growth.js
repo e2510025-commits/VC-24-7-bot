@@ -60,6 +60,13 @@ export const data = new SlashCommandBuilder()
       .setDescription('比較基準')
       .addChoices(...BASELINE_CHOICES)
       .setRequired(false)
+  )
+  .addNumberOption(option =>
+    option
+      .setName('target_pp')
+      .setDescription('目標PP（指定時に到達予測を表示）')
+      .setMinValue(1)
+      .setRequired(false)
   );
 
 async function resolveTargetUsername(interaction) {
@@ -350,12 +357,91 @@ function buildForecastFieldValue(points) {
     .join('\n');
 }
 
+function formatRankImprovement(value) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return 'N/A';
+  }
+
+  const abs = Math.trunc(Math.abs(numeric));
+  if (abs === 0) {
+    return '±0';
+  }
+
+  return numeric > 0 ? `↑${formatNumber(abs)}` : `↓${formatNumber(abs)}`;
+}
+
+function buildPeriodComparisonLine({ label, currentDelta, previousDelta, formatter }) {
+  if (currentDelta === null || previousDelta === null) {
+    return `${label}: データ不足`;
+  }
+
+  return `${label}: ${formatter(currentDelta)} / 前期間: ${formatter(previousDelta)} / 差分: ${formatter(currentDelta - previousDelta)}`;
+}
+
+function calcPpPerDay(points, lookbackDays) {
+  const valid = (points || []).filter(point => toFiniteNumber(point.pp) !== null);
+  if (valid.length < 2) {
+    return null;
+  }
+
+  const last = valid[valid.length - 1];
+  const lastTs = new Date(last.captured_at).getTime();
+  if (!Number.isFinite(lastTs)) {
+    return null;
+  }
+
+  const cutoff = lastTs - lookbackDays * 24 * 60 * 60 * 1000;
+  const inWindow = valid.filter(point => new Date(point.captured_at).getTime() >= cutoff);
+  const source = inWindow.length >= 2 ? inWindow : valid;
+
+  const first = source[0];
+  const firstTs = new Date(first.captured_at).getTime();
+  const spanDays = (lastTs - firstTs) / (24 * 60 * 60 * 1000);
+  if (!Number.isFinite(spanDays) || spanDays < 1) {
+    return null;
+  }
+
+  return (toFiniteNumber(last.pp) - toFiniteNumber(first.pp)) / spanDays;
+}
+
+function buildTargetPpForecast(points, currentPp, targetPp) {
+  const current = toFiniteNumber(currentPp);
+  const target = toFiniteNumber(targetPp);
+
+  if (current === null || target === null) {
+    return 'データ不足';
+  }
+
+  if (target <= current) {
+    return `目標 ${target.toFixed(2)}pp は既に達成済みです`; 
+  }
+
+  const need = target - current;
+  const slopes = [
+    { label: '7日傾向', perDay: calcPpPerDay(points, 7) },
+    { label: '30日傾向', perDay: calcPpPerDay(points, 30) }
+  ];
+
+  return slopes
+    .map(({ label, perDay }) => {
+      if (perDay === null || perDay <= 0) {
+        return `${label}: 予測不可 (成長傾き不足)`;
+      }
+
+      const days = Math.ceil(need / perDay);
+      return `${label}: 約${formatNumber(days)}日 (傾き ${formatSignedDecimal(perDay)}pp/日)`;
+    })
+    .join('\n');
+}
+
 export async function execute(interaction) {
   await interaction.deferReply();
 
   try {
     const requestedMode = interaction.options.getString('mode') || 'osu';
     const baseline = interaction.options.getString('baseline') || 'multi';
+    const targetPp = interaction.options.getNumber('target_pp');
     const mode = normalizeOsuMode(requestedMode);
     const modeLabel = getModeLabel(mode);
     const targetUsername = await resolveTargetUsername(interaction);
@@ -377,6 +463,30 @@ export async function execute(interaction) {
     const now = Date.now();
     let windowSnapshots = [];
     let baselineComparison = null;
+
+    const [weekStartSnapshot, twoWeeksStartSnapshot, monthStartSnapshot, twoMonthsStartSnapshot] =
+      await Promise.all([
+        getClosestSnapshotBefore({
+          osuUserId: userId,
+          mode,
+          beforeDate: new Date(now - 7 * 24 * 60 * 60 * 1000)
+        }),
+        getClosestSnapshotBefore({
+          osuUserId: userId,
+          mode,
+          beforeDate: new Date(now - 14 * 24 * 60 * 60 * 1000)
+        }),
+        getClosestSnapshotBefore({
+          osuUserId: userId,
+          mode,
+          beforeDate: new Date(now - 30 * 24 * 60 * 60 * 1000)
+        }),
+        getClosestSnapshotBefore({
+          osuUserId: userId,
+          mode,
+          beforeDate: new Date(now - 60 * 24 * 60 * 60 * 1000)
+        })
+      ]);
 
     const dailySnapshots = await getSnapshotsSince({
       osuUserId: userId,
@@ -501,11 +611,86 @@ export async function execute(interaction) {
       inline: false
     });
 
+    const currentWeekPpDelta =
+      weekStartSnapshot && toFiniteNumber(stats.pp) !== null && toFiniteNumber(weekStartSnapshot.pp) !== null
+        ? toFiniteNumber(stats.pp) - toFiniteNumber(weekStartSnapshot.pp)
+        : null;
+    const previousWeekPpDelta =
+      weekStartSnapshot && twoWeeksStartSnapshot && toFiniteNumber(weekStartSnapshot.pp) !== null && toFiniteNumber(twoWeeksStartSnapshot.pp) !== null
+        ? toFiniteNumber(weekStartSnapshot.pp) - toFiniteNumber(twoWeeksStartSnapshot.pp)
+        : null;
+
+    const currentMonthPpDelta =
+      monthStartSnapshot && toFiniteNumber(stats.pp) !== null && toFiniteNumber(monthStartSnapshot.pp) !== null
+        ? toFiniteNumber(stats.pp) - toFiniteNumber(monthStartSnapshot.pp)
+        : null;
+    const previousMonthPpDelta =
+      monthStartSnapshot && twoMonthsStartSnapshot && toFiniteNumber(monthStartSnapshot.pp) !== null && toFiniteNumber(twoMonthsStartSnapshot.pp) !== null
+        ? toFiniteNumber(monthStartSnapshot.pp) - toFiniteNumber(twoMonthsStartSnapshot.pp)
+        : null;
+
+    const currentWeekRankDelta =
+      weekStartSnapshot && toFiniteNumber(weekStartSnapshot.global_rank) !== null && toFiniteNumber(stats.global_rank) !== null
+        ? toFiniteNumber(weekStartSnapshot.global_rank) - toFiniteNumber(stats.global_rank)
+        : null;
+    const previousWeekRankDelta =
+      weekStartSnapshot && twoWeeksStartSnapshot && toFiniteNumber(twoWeeksStartSnapshot.global_rank) !== null && toFiniteNumber(weekStartSnapshot.global_rank) !== null
+        ? toFiniteNumber(twoWeeksStartSnapshot.global_rank) - toFiniteNumber(weekStartSnapshot.global_rank)
+        : null;
+
+    const currentMonthRankDelta =
+      monthStartSnapshot && toFiniteNumber(monthStartSnapshot.global_rank) !== null && toFiniteNumber(stats.global_rank) !== null
+        ? toFiniteNumber(monthStartSnapshot.global_rank) - toFiniteNumber(stats.global_rank)
+        : null;
+    const previousMonthRankDelta =
+      monthStartSnapshot && twoMonthsStartSnapshot && toFiniteNumber(twoMonthsStartSnapshot.global_rank) !== null && toFiniteNumber(monthStartSnapshot.global_rank) !== null
+        ? toFiniteNumber(twoMonthsStartSnapshot.global_rank) - toFiniteNumber(monthStartSnapshot.global_rank)
+        : null;
+
+    fields.push({
+      name: '期間比較 (今週vs先週 / 今月vs先月)',
+      value: [
+        buildPeriodComparisonLine({
+          label: 'PP 週次',
+          currentDelta: currentWeekPpDelta,
+          previousDelta: previousWeekPpDelta,
+          formatter: value => `${formatSignedDecimal(value)}pp`
+        }),
+        buildPeriodComparisonLine({
+          label: '順位 週次',
+          currentDelta: currentWeekRankDelta,
+          previousDelta: previousWeekRankDelta,
+          formatter: formatRankImprovement
+        }),
+        buildPeriodComparisonLine({
+          label: 'PP 月次',
+          currentDelta: currentMonthPpDelta,
+          previousDelta: previousMonthPpDelta,
+          formatter: value => `${formatSignedDecimal(value)}pp`
+        }),
+        buildPeriodComparisonLine({
+          label: '順位 月次',
+          currentDelta: currentMonthRankDelta,
+          previousDelta: previousMonthRankDelta,
+          formatter: formatRankImprovement
+        })
+      ].join('\n'),
+      inline: false
+    });
+
     fields.push({
       name: '成長予測 (直近30日傾向)',
       value: buildForecastFieldValue(dailySummaryPoints),
       inline: false
     });
+
+    if (targetPp !== null) {
+      fields.push({
+        name: `目標PPシミュレーター (${targetPp.toFixed(2)}pp)`,
+        value: buildTargetPpForecast(dailySummaryPoints, stats.pp, targetPp),
+        inline: false
+      });
+    }
 
     embed.addFields(...fields);
 

@@ -21,16 +21,25 @@ import {
 import { log } from '../utils/logger.js';
 
 const SPAN_CHOICES = [
+  { name: '1日', value: '1d' },
   { name: '7日', value: '7d' },
   { name: '30日', value: '30d' },
   { name: '90日', value: '90d' },
-  { name: '180日', value: '180d' }
+  { name: '180日', value: '180d' },
+  { name: '全期間', value: 'all' }
 ];
 
 const GRAPH_TYPE_CHOICES = [
   { name: '単一指標ライン', value: 'metric_line' },
   { name: 'PP + Rank 二軸', value: 'pp_rank_dual' },
+  { name: 'PP + Rank 予測グラフ', value: 'pp_rank_forecast' },
   { name: 'Best PP 散布図', value: 'best_pp_scatter' }
+];
+
+const FORECAST_DAYS_CHOICES = [
+  { name: '7日先', value: '7' },
+  { name: '30日先', value: '30' },
+  { name: '90日先', value: '90' }
 ];
 
 const DAILY_TABLE_MAX_ROWS = 10;
@@ -210,6 +219,20 @@ function formatRankChange(delta) {
   }
 
   return numeric > 0 ? `↑${formatNumber(abs)}` : `↓${formatNumber(abs)}`;
+}
+
+function formatSignedDecimal(value, digits = 2) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return 'N/A';
+  }
+
+  if (numeric === 0) {
+    return `±${numeric.toFixed(digits)}`;
+  }
+
+  const sign = numeric > 0 ? '+' : '-';
+  return `${sign}${Math.abs(numeric).toFixed(digits)}`;
 }
 
 function buildDailySummaryTable(series, metric) {
@@ -409,6 +432,183 @@ function buildPpRankDualChartConfig({ labels, ppValues, rankValues }) {
       }
     }
   };
+}
+
+function buildPpRankForecastChartConfig({
+  labels,
+  actualPpValues,
+  actualRankValues,
+  forecastPpValues,
+  forecastRankValues
+}) {
+  return {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'PP (Actual)',
+          data: actualPpValues,
+          borderColor: '#62B6FF',
+          backgroundColor: 'rgba(98, 182, 255, 0.15)',
+          yAxisID: 'yPp',
+          fill: false,
+          tension: 0.2,
+          spanGaps: true,
+          pointRadius: 2
+        },
+        {
+          label: 'PP (Forecast)',
+          data: forecastPpValues,
+          borderColor: '#62B6FF',
+          borderDash: [8, 6],
+          yAxisID: 'yPp',
+          fill: false,
+          tension: 0.15,
+          spanGaps: true,
+          pointRadius: 0
+        },
+        {
+          label: 'Rank (Actual)',
+          data: actualRankValues,
+          borderColor: '#2F2F2F',
+          backgroundColor: 'rgba(47, 47, 47, 0.10)',
+          yAxisID: 'yRank',
+          fill: false,
+          tension: 0.2,
+          spanGaps: true,
+          pointRadius: 2
+        },
+        {
+          label: 'Rank (Forecast)',
+          data: forecastRankValues,
+          borderColor: '#2F2F2F',
+          borderDash: [8, 6],
+          yAxisID: 'yRank',
+          fill: false,
+          tension: 0.15,
+          spanGaps: true,
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      plugins: {
+        title: {
+          display: true,
+          text: 'PP and Rank Forecast'
+        },
+        legend: {
+          position: 'bottom'
+        }
+      },
+      scales: {
+        yPp: {
+          type: 'linear',
+          position: 'left',
+          beginAtZero: false,
+          title: {
+            display: true,
+            text: 'PP'
+          }
+        },
+        yRank: {
+          type: 'linear',
+          position: 'right',
+          reverse: true,
+          beginAtZero: false,
+          grid: {
+            drawOnChartArea: false
+          },
+          title: {
+            display: true,
+            text: 'Rank'
+          }
+        }
+      }
+    }
+  };
+}
+
+function buildPpRankSeries(dailyPoints) {
+  const series = [];
+
+  for (const point of dailyPoints.values()) {
+    const pp = getSnapshotValue(point, 'pp');
+    const rank = getSnapshotValue(point, 'global_rank');
+    if (pp === null && rank === null) {
+      continue;
+    }
+
+    const timestamp = new Date(point.captured_at).getTime();
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+
+    series.push({
+      timestamp,
+      label: toDateLabel(point.captured_at),
+      pp: pp === null ? null : Number(pp),
+      rank: rank === null ? null : Number(rank)
+    });
+  }
+
+  return series;
+}
+
+function calcPerDayTrend(series, key, lookbackDays = 30) {
+  const valid = (series || []).filter(point => toFiniteNumber(point[key]) !== null);
+  if (valid.length < 2) {
+    return null;
+  }
+
+  const last = valid[valid.length - 1];
+  const cutoff = last.timestamp - lookbackDays * 24 * 60 * 60 * 1000;
+  const inWindow = valid.filter(point => point.timestamp >= cutoff);
+  const points = inWindow.length >= 2 ? inWindow : valid;
+
+  const first = points[0];
+  const spanDays = (last.timestamp - first.timestamp) / (24 * 60 * 60 * 1000);
+  if (!Number.isFinite(spanDays) || spanDays < 1) {
+    return null;
+  }
+
+  return (toFiniteNumber(last[key]) - toFiniteNumber(first[key])) / spanDays;
+}
+
+function buildForecastSeries(baseSeries, forecastDays) {
+  const series = Array.isArray(baseSeries) ? [...baseSeries] : [];
+  if (series.length === 0) {
+    return [];
+  }
+
+  const last = series[series.length - 1];
+  const ppSlope = calcPerDayTrend(series, 'pp');
+  const rankSlope = calcPerDayTrend(series, 'rank');
+
+  const points = [];
+  for (let offset = 1; offset <= forecastDays; offset += 1) {
+    const timestamp = last.timestamp + offset * 24 * 60 * 60 * 1000;
+
+    const pp =
+      toFiniteNumber(last.pp) === null || ppSlope === null
+        ? null
+        : Number((last.pp + ppSlope * offset).toFixed(3));
+    const rawRank =
+      toFiniteNumber(last.rank) === null || rankSlope === null
+        ? null
+        : last.rank + rankSlope * offset;
+    const rank = rawRank === null ? null : Math.max(1, Number(rawRank.toFixed(3)));
+
+    points.push({
+      timestamp,
+      label: toDateLabel(timestamp),
+      pp,
+      rank
+    });
+  }
+
+  return points;
 }
 
 function normalizeScoreGrade(rank) {
@@ -623,6 +823,13 @@ export const data = new SlashCommandBuilder()
       .setDescription('表示期間')
       .addChoices(...SPAN_CHOICES)
       .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
+      .setName('forecast_days')
+      .setDescription('予測日数（予測グラフ時のみ使用）')
+      .addChoices(...FORECAST_DAYS_CHOICES)
+      .setRequired(false)
   );
 
 export async function execute(interaction) {
@@ -631,9 +838,13 @@ export async function execute(interaction) {
   try {
     const mode = normalizeOsuMode(interaction.options.getString('mode') || 'osu');
     const chartType = interaction.options.getString('chart') || 'metric_line';
+    const forecastDays = Number(interaction.options.getString('forecast_days') || '30');
     const metric = interaction.options.getString('metric') || 'pp';
     const span = interaction.options.getString('span') || '30d';
-    const period = PERIOD_MAP[span];
+    const period =
+      span === 'all'
+        ? { label: '全期間', ms: null, isAllTime: true }
+        : PERIOD_MAP[span];
 
     if (!period) {
       return interaction.editReply('❌ span の指定が不正です');
@@ -649,7 +860,7 @@ export async function execute(interaction) {
     const user = await fetchOsuUser(targetUsername, mode);
     const stats = user.statistics || {};
     const now = new Date();
-    const sinceDate = new Date(now.getTime() - period.ms);
+    const sinceDate = period.isAllTime ? new Date(0) : new Date(now.getTime() - period.ms);
 
     await saveOsuSnapshot({
       discordId: interaction.user.id,
@@ -680,8 +891,8 @@ export async function execute(interaction) {
       }
 
       const filteredPoints = allPoints.filter(point => point.timestamp >= sinceDate.getTime());
-      const useFallback = filteredPoints.length < MIN_SCATTER_POINTS_FOR_PERIOD;
-      const points = useFallback ? allPoints : filteredPoints;
+      const useFallback = !period.isAllTime && filteredPoints.length < MIN_SCATTER_POINTS_FOR_PERIOD;
+      const points = period.isAllTime ? allPoints : useFallback ? allPoints : filteredPoints;
 
       if (points.length === 0) {
         return interaction.editReply('❌ 指定期間に散布図化できるデータがありませんでした');
@@ -751,36 +962,59 @@ export async function execute(interaction) {
       dailyPoints.set(key, point);
     }
 
-    if (chartType === 'pp_rank_dual') {
-      const labels = [];
-      const ppValues = [];
-      const rankValues = [];
-      const series = [];
+    if (chartType === 'pp_rank_dual' || chartType === 'pp_rank_forecast') {
+      const series = buildPpRankSeries(dailyPoints);
 
-      for (const point of dailyPoints.values()) {
-        const pp = getSnapshotValue(point, 'pp');
-        const rank = getSnapshotValue(point, 'global_rank');
-        if (pp === null && rank === null) {
-          continue;
-        }
-
-        const label = toDateLabel(point.captured_at);
-        labels.push(label);
-        ppValues.push(pp === null ? null : Number(pp));
-        rankValues.push(rank === null ? null : Number(rank));
-        series.push({
-          label,
-          pp: pp === null ? null : Number(pp),
-          rank: rank === null ? null : Number(rank)
-        });
-      }
-
-      if (labels.length === 0) {
+      if (series.length === 0) {
         return interaction.editReply('❌ PP+Rankグラフ化できる履歴データがありませんでした');
       }
 
-      const chartConfig = buildPpRankDualChartConfig({ labels, ppValues, rankValues });
-      const chartUrl = toQuickChartUrl(chartConfig);
+      const labels = series.map(point => point.label);
+      const ppValues = series.map(point => point.pp);
+      const rankValues = series.map(point => point.rank);
+      let chartUrl = null;
+      let forecastNote = '';
+
+      if (chartType === 'pp_rank_forecast') {
+        const forecast = buildForecastSeries(series, Math.max(1, Math.min(90, forecastDays)));
+        if (forecast.length === 0) {
+          return interaction.editReply('❌ 予測用の履歴データが不足しています');
+        }
+
+        const forecastLabels = forecast.map(point => point.label);
+        const mergedLabels = [...labels, ...forecastLabels];
+        const actualPpValues = [...ppValues, ...forecast.map(() => null)];
+        const actualRankValues = [...rankValues, ...forecast.map(() => null)];
+        const forecastPpValues = [
+          ...ppValues.map(() => null),
+          ...forecast.map(point => point.pp)
+        ];
+        const forecastRankValues = [
+          ...rankValues.map(() => null),
+          ...forecast.map(point => point.rank)
+        ];
+
+        const config = buildPpRankForecastChartConfig({
+          labels: mergedLabels,
+          actualPpValues,
+          actualRankValues,
+          forecastPpValues,
+          forecastRankValues
+        });
+        chartUrl = toQuickChartUrl(config);
+
+        const ppSlope = calcPerDayTrend(series, 'pp');
+        const rankSlope = calcPerDayTrend(series, 'rank');
+        forecastNote = [
+          `予測日数: ${Math.max(1, Math.min(90, forecastDays))}日`,
+          `PP傾き: ${formatSignedDecimal(ppSlope)}pp/日`,
+          `Rank傾き: ${formatSignedDecimal(rankSlope)}位/日`
+        ].join('\n');
+      } else {
+        const chartConfig = buildPpRankDualChartConfig({ labels, ppValues, rankValues });
+        chartUrl = toQuickChartUrl(chartConfig);
+      }
+
       const rankHistoryNote =
         rankHistoryPoints.length > 0
           ? '\nRankは公開履歴で連携前データを補完しています'
@@ -788,9 +1022,17 @@ export async function execute(interaction) {
 
       const embed = new EmbedBuilder()
         .setColor('#5DADE2')
-        .setTitle(`${user.username} のPP+Rank推移 [${getModeLabel(mode)}]`)
+        .setTitle(
+          chartType === 'pp_rank_forecast'
+            ? `${user.username} のPP+Rank予測 [${getModeLabel(mode)}]`
+            : `${user.username} のPP+Rank推移 [${getModeLabel(mode)}]`
+        )
         .setURL(`https://osu.ppy.sh/users/${user.id}`)
-        .setDescription(`${period.label} / 二軸グラフ${rankHistoryNote}`)
+        .setDescription(
+          chartType === 'pp_rank_forecast'
+            ? `${period.label} / 予測グラフ${rankHistoryNote}`
+            : `${period.label} / 二軸グラフ${rankHistoryNote}`
+        )
         .addFields(
           {
             name: '現在値',
@@ -800,6 +1042,9 @@ export async function execute(interaction) {
             ].join('\n'),
             inline: true
           },
+          ...(chartType === 'pp_rank_forecast'
+            ? [{ name: '予測パラメータ', value: forecastNote, inline: true }]
+            : []),
           {
             name: `日次サマリー (最新${Math.min(DAILY_TABLE_MAX_ROWS, series.length)}日)`,
             value: buildPpRankSummaryTable(series),
