@@ -36,6 +36,26 @@ export async function testConnection() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+
+    // osu! 成長率表示用のスナップショットテーブル
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS osu_user_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        osu_user_id BIGINT NOT NULL,
+        mode VARCHAR(16) NOT NULL,
+        pp DOUBLE PRECISION,
+        global_rank INTEGER,
+        country_rank INTEGER,
+        play_time_seconds INTEGER,
+        play_count INTEGER,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_osu_user_snapshots_lookup
+      ON osu_user_snapshots (osu_user_id, mode, captured_at DESC)
+    `);
     
     client.release();
     log('PostgreSQL接続成功', 'success');
