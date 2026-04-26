@@ -5,7 +5,9 @@ export const PERIOD_MAP = {
   '1week': { label: '1week', ms: 7 * 24 * 60 * 60 * 1000 },
   '1month': { label: '1month', ms: 30 * 24 * 60 * 60 * 1000 },
   '7d': { label: '7日', ms: 7 * 24 * 60 * 60 * 1000 },
-  '30d': { label: '30日', ms: 30 * 24 * 60 * 60 * 1000 }
+  '30d': { label: '30日', ms: 30 * 24 * 60 * 60 * 1000 },
+  '90d': { label: '90日', ms: 90 * 24 * 60 * 60 * 1000 },
+  '180d': { label: '180日', ms: 180 * 24 * 60 * 60 * 1000 }
 };
 
 export const GOAL_METRICS = [

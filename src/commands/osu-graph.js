@@ -3,6 +3,7 @@ import { getLinkedOsuUsername } from '../database/supabase.js';
 import { getSnapshotsSince, saveOsuSnapshot } from '../database/osuSnapshots.js';
 import {
   OsuApiError,
+  fetchBestScores,
   fetchOsuUser,
   formatNumber,
   getModeLabel,
@@ -21,10 +22,31 @@ import { log } from '../utils/logger.js';
 
 const SPAN_CHOICES = [
   { name: '7日', value: '7d' },
-  { name: '30日', value: '30d' }
+  { name: '30日', value: '30d' },
+  { name: '90日', value: '90d' },
+  { name: '180日', value: '180d' }
+];
+
+const GRAPH_TYPE_CHOICES = [
+  { name: '単一指標ライン', value: 'metric_line' },
+  { name: 'PP + Rank 二軸', value: 'pp_rank_dual' },
+  { name: 'Best PP 散布図', value: 'best_pp_scatter' }
 ];
 
 const DAILY_TABLE_MAX_ROWS = 10;
+const BEST_SCATTER_LIMIT = 100;
+const MIN_SCATTER_POINTS_FOR_PERIOD = 8;
+const SCORE_GRADE_ORDER = ['D', 'C', 'B', 'A', 'S', 'SH', 'X', 'XH'];
+const SCORE_GRADE_COLORS = {
+  D: '#E74C3C',
+  C: '#9B59B6',
+  B: '#3F51B5',
+  A: '#4CAF50',
+  S: '#F1C40F',
+  SH: '#B39DDB',
+  X: '#D4AF37',
+  XH: '#90CAF9'
+};
 
 function toDateLabel(dateLike) {
   const date = new Date(dateLike);
@@ -35,6 +57,19 @@ function toDateLabel(dateLike) {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${month}/${day}`;
+}
+
+function toDateTimeLabel(dateLike) {
+  const date = new Date(dateLike);
+  if (!Number.isFinite(date.getTime())) {
+    return '??';
+  }
+
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const hour = `${date.getHours()}`.padStart(2, '0');
+  const minute = `${date.getMinutes()}`.padStart(2, '0');
+  return `${month}/${day} ${hour}:${minute}`;
 }
 
 function toFiniteNumber(value) {
@@ -154,6 +189,29 @@ function formatDailyDelta(metric, delta) {
   return `${numeric}`;
 }
 
+function formatRank(rank) {
+  const numeric = toFiniteNumber(rank);
+  if (numeric === null || numeric <= 0) {
+    return 'N/A';
+  }
+
+  return `#${formatNumber(Math.trunc(numeric))}`;
+}
+
+function formatRankChange(delta) {
+  const numeric = toFiniteNumber(delta);
+  if (numeric === null) {
+    return 'N/A';
+  }
+
+  const abs = Math.trunc(Math.abs(numeric));
+  if (abs === 0) {
+    return '±0';
+  }
+
+  return numeric > 0 ? `↑${formatNumber(abs)}` : `↓${formatNumber(abs)}`;
+}
+
 function buildDailySummaryTable(series, metric) {
   if (!Array.isArray(series) || series.length === 0) {
     return 'データ不足';
@@ -180,6 +238,50 @@ function buildDailySummaryTable(series, metric) {
   }
 
   // Embed field limit(1024)に収めるため、古い行から削る。
+  while (rows.length > 1) {
+    rows.shift();
+    const trimmed = ['```', header, ...rows, '```'].join('\n');
+    if (trimmed.length <= 1000) {
+      return trimmed;
+    }
+  }
+
+  return ['```', header, rows[0], '```'].join('\n');
+}
+
+function buildPpRankSummaryTable(series) {
+  if (!Array.isArray(series) || series.length === 0) {
+    return 'データ不足';
+  }
+
+  const startIndex = Math.max(0, series.length - DAILY_TABLE_MAX_ROWS);
+  const rows = [];
+
+  for (let index = startIndex; index < series.length; index += 1) {
+    const current = series[index];
+    const previous = index > 0 ? series[index - 1] : null;
+
+    const ppDelta =
+      previous && current.pp !== null && previous.pp !== null
+        ? current.pp - previous.pp
+        : null;
+    const rankDelta =
+      previous && current.rank !== null && previous.rank !== null
+        ? previous.rank - current.rank
+        : null;
+
+    rows.push(
+      `${current.label} | ${current.pp === null ? 'N/A' : `${current.pp.toFixed(2)}pp`} | ${formatRank(current.rank)} | ${formatDailyDelta('pp', ppDelta)} | ${formatRankChange(rankDelta)}`
+    );
+  }
+
+  const header = 'Date | PP | Rank | dPP | dRank';
+  const content = ['```', header, ...rows, '```'].join('\n');
+
+  if (content.length <= 1000) {
+    return content;
+  }
+
   while (rows.length > 1) {
     rows.shift();
     const trimmed = ['```', header, ...rows, '```'].join('\n');
@@ -241,6 +343,245 @@ function buildChartConfig({ labels, values, metric }) {
   };
 }
 
+function buildPpRankDualChartConfig({ labels, ppValues, rankValues }) {
+  return {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'PP',
+          data: ppValues,
+          borderColor: '#62B6FF',
+          backgroundColor: 'rgba(98, 182, 255, 0.16)',
+          yAxisID: 'yPp',
+          fill: false,
+          tension: 0.2,
+          spanGaps: true,
+          pointRadius: 2
+        },
+        {
+          label: 'Rank',
+          data: rankValues,
+          borderColor: '#2F2F2F',
+          backgroundColor: 'rgba(47, 47, 47, 0.10)',
+          yAxisID: 'yRank',
+          fill: false,
+          tension: 0.2,
+          spanGaps: true,
+          pointRadius: 2
+        }
+      ]
+    },
+    options: {
+      plugins: {
+        title: {
+          display: true,
+          text: 'Total PP and Rank'
+        },
+        legend: {
+          position: 'bottom'
+        }
+      },
+      scales: {
+        yPp: {
+          type: 'linear',
+          position: 'left',
+          beginAtZero: false,
+          title: {
+            display: true,
+            text: 'PP'
+          }
+        },
+        yRank: {
+          type: 'linear',
+          position: 'right',
+          reverse: true,
+          beginAtZero: false,
+          grid: {
+            drawOnChartArea: false
+          },
+          title: {
+            display: true,
+            text: 'Rank'
+          }
+        }
+      }
+    }
+  };
+}
+
+function normalizeScoreGrade(rank) {
+  const value = String(rank || '').trim().toUpperCase();
+  return SCORE_GRADE_ORDER.includes(value) ? value : 'D';
+}
+
+function truncateText(text, maxLength = 56) {
+  const value = String(text || 'Unknown Title');
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function buildBestScorePoints(scores, mode) {
+  const points = [];
+
+  for (const score of scores || []) {
+    const pp = toFiniteNumber(score?.pp);
+    const timestamp = new Date(score?.ended_at || score?.created_at).getTime();
+
+    if (pp === null || !Number.isFinite(timestamp)) {
+      continue;
+    }
+
+    const artist = score?.beatmapset?.artist || 'Unknown Artist';
+    const title = score?.beatmapset?.title || 'Unknown Title';
+    const diff = score?.beatmap?.version || 'Unknown Diff';
+    const scoreId = Number(score?.id);
+
+    points.push({
+      timestamp,
+      label: toDateLabel(timestamp),
+      pp,
+      grade: normalizeScoreGrade(score?.rank),
+      title: `${artist} - ${title} [${diff}]`,
+      url: Number.isFinite(scoreId)
+        ? `https://osu.ppy.sh/scores/${score?.mode || mode}/${Math.trunc(scoreId)}`
+        : null
+    });
+  }
+
+  return points.sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function calcRegression(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return { slope: null, values: [] };
+  }
+
+  const n = points.length;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXY = 0;
+  let sumXX = 0;
+
+  for (let index = 0; index < n; index += 1) {
+    const x = index + 1;
+    const y = points[index].pp;
+    sumX += x;
+    sumY += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+
+  const denominator = n * sumXX - sumX * sumX;
+  const slope = denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
+  const intercept = (sumY - slope * sumX) / n;
+
+  const values = points.map((_, index) => {
+    const x = index + 1;
+    return Number((slope * x + intercept).toFixed(4));
+  });
+
+  return { slope, values };
+}
+
+function buildBestPpScatterChartConfig(points) {
+  const labels = points.map(point => point.label);
+  const datasets = [];
+
+  for (const grade of SCORE_GRADE_ORDER) {
+    const data = points.map(point => (point.grade === grade ? Number(point.pp.toFixed(4)) : null));
+    if (!data.some(value => value !== null)) {
+      continue;
+    }
+
+    datasets.push({
+      type: 'line',
+      label: `${grade} Scores`,
+      data,
+      showLine: false,
+      pointRadius: 4,
+      pointHoverRadius: 5,
+      backgroundColor: SCORE_GRADE_COLORS[grade],
+      borderColor: SCORE_GRADE_COLORS[grade]
+    });
+  }
+
+  const regression = calcRegression(points);
+  if (regression.values.length > 0) {
+    datasets.unshift({
+      type: 'line',
+      label: 'Linear Regression (pp/play)',
+      data: regression.values,
+      borderColor: '#A88FD8',
+      borderDash: [8, 6],
+      pointRadius: 0,
+      fill: false,
+      tension: 0
+    });
+  }
+
+  return {
+    slope: regression.slope,
+    config: {
+      type: 'line',
+      data: {
+        labels,
+        datasets
+      },
+      options: {
+        plugins: {
+          title: {
+            display: true,
+            text: 'Best Performance Time-pp Scatter'
+          },
+          legend: {
+            position: 'bottom'
+          }
+        },
+        scales: {
+          x: {
+            title: {
+              display: true,
+              text: 'Date'
+            },
+            ticks: {
+              maxTicksLimit: 12
+            }
+          },
+          y: {
+            title: {
+              display: true,
+              text: 'PP'
+            },
+            beginAtZero: false
+          }
+        }
+      }
+    }
+  };
+}
+
+function buildBestScoreSampleTable(points) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return 'データ不足';
+  }
+
+  const rows = points
+    .slice(-4)
+    .reverse()
+    .map(point => {
+      const link = point.url ? `[${truncateText(point.title)}](${point.url})` : truncateText(point.title);
+      return `${toDateTimeLabel(point.timestamp)} | ${point.grade} | ${point.pp.toFixed(2)}pp | ${link}`;
+    });
+
+  const header = 'Time | Grade | PP | Beatmap';
+  const content = ['```', header, ...rows, '```'].join('\n');
+  return content.length <= 1000 ? content : 'データ件数が多いため省略しました';
+}
+
 export const data = new SlashCommandBuilder()
   .setName('osu-graph')
   .setDescription('osu!成長推移をグラフで表示します')
@@ -264,8 +605,15 @@ export const data = new SlashCommandBuilder()
   )
   .addStringOption(option =>
     option
+      .setName('chart')
+      .setDescription('グラフタイプ')
+      .addChoices(...GRAPH_TYPE_CHOICES)
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
       .setName('metric')
-      .setDescription('グラフにする指標')
+      .setDescription('グラフにする指標（単一指標ライン時のみ使用）')
       .addChoices(...GRAPH_METRICS)
       .setRequired(false)
   )
@@ -282,6 +630,7 @@ export async function execute(interaction) {
 
   try {
     const mode = normalizeOsuMode(interaction.options.getString('mode') || 'osu');
+    const chartType = interaction.options.getString('chart') || 'metric_line';
     const metric = interaction.options.getString('metric') || 'pp';
     const span = interaction.options.getString('span') || '30d';
     const period = PERIOD_MAP[span];
@@ -301,13 +650,6 @@ export async function execute(interaction) {
     const stats = user.statistics || {};
     const now = new Date();
     const sinceDate = new Date(now.getTime() - period.ms);
-
-    const snapshots = await getSnapshotsSince({
-      osuUserId: user.id,
-      mode,
-      sinceDate,
-      untilDate: now
-    });
 
     await saveOsuSnapshot({
       discordId: interaction.user.id,
@@ -329,8 +671,75 @@ export async function execute(interaction) {
       play_count: stats.play_count
     };
 
+    if (chartType === 'best_pp_scatter') {
+      const bestScores = await fetchBestScores(user.id, mode, BEST_SCATTER_LIMIT);
+      const allPoints = buildBestScorePoints(bestScores, mode);
+
+      if (allPoints.length === 0) {
+        return interaction.editReply('❌ 散布図を作成できるBestスコアデータがありませんでした');
+      }
+
+      const filteredPoints = allPoints.filter(point => point.timestamp >= sinceDate.getTime());
+      const useFallback = filteredPoints.length < MIN_SCATTER_POINTS_FOR_PERIOD;
+      const points = useFallback ? allPoints : filteredPoints;
+
+      if (points.length === 0) {
+        return interaction.editReply('❌ 指定期間に散布図化できるデータがありませんでした');
+      }
+
+      const scatter = buildBestPpScatterChartConfig(points);
+      const chartUrl = toQuickChartUrl(scatter.config);
+      const highestPp = Math.max(...points.map(point => point.pp));
+      const regressionText =
+        scatter.slope === null
+          ? 'N/A'
+          : `${scatter.slope >= 0 ? '+' : '-'}${Math.abs(scatter.slope).toFixed(2)} pp/play`;
+      const fallbackNote = useFallback
+        ? '\n指定期間データが少ないため、Topスコア全体で描画しています'
+        : '';
+
+      const embed = new EmbedBuilder()
+        .setColor('#7F8CFF')
+        .setTitle(`${user.username} のBest PP散布図 [${getModeLabel(mode)}]`)
+        .setURL(`https://osu.ppy.sh/users/${user.id}`)
+        .setDescription(`${period.label} / Top${BEST_SCATTER_LIMIT}由来の散布図${fallbackNote}`)
+        .addFields(
+          {
+            name: '統計',
+            value: [
+              `点数: ${formatNumber(points.length)}件`,
+              `回帰傾き: ${regressionText}`,
+              `最高PP: ${highestPp.toFixed(2)}pp`
+            ].join('\n'),
+            inline: true
+          },
+          {
+            name: '最近の点',
+            value: buildBestScoreSampleTable(points),
+            inline: false
+          }
+        )
+        .setImage(chartUrl)
+        .setTimestamp(new Date());
+
+      if (user.avatar_url) {
+        embed.setThumbnail(user.avatar_url);
+      }
+
+      return interaction.editReply({ embeds: [embed] });
+    }
+
+    const snapshots = await getSnapshotsSince({
+      osuUserId: user.id,
+      mode,
+      sinceDate,
+      untilDate: now
+    });
+
     const rankHistoryPoints =
-      metric === 'global_rank' ? buildRankHistoryPoints(user, sinceDate, now) : [];
+      chartType === 'pp_rank_dual' || metric === 'global_rank'
+        ? buildRankHistoryPoints(user, sinceDate, now)
+        : [];
 
     const merged = [...rankHistoryPoints, ...snapshots, currentPoint].sort(
       (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
@@ -340,6 +749,71 @@ export async function execute(interaction) {
     for (const point of merged) {
       const key = new Date(point.captured_at).toISOString().slice(0, 10);
       dailyPoints.set(key, point);
+    }
+
+    if (chartType === 'pp_rank_dual') {
+      const labels = [];
+      const ppValues = [];
+      const rankValues = [];
+      const series = [];
+
+      for (const point of dailyPoints.values()) {
+        const pp = getSnapshotValue(point, 'pp');
+        const rank = getSnapshotValue(point, 'global_rank');
+        if (pp === null && rank === null) {
+          continue;
+        }
+
+        const label = toDateLabel(point.captured_at);
+        labels.push(label);
+        ppValues.push(pp === null ? null : Number(pp));
+        rankValues.push(rank === null ? null : Number(rank));
+        series.push({
+          label,
+          pp: pp === null ? null : Number(pp),
+          rank: rank === null ? null : Number(rank)
+        });
+      }
+
+      if (labels.length === 0) {
+        return interaction.editReply('❌ PP+Rankグラフ化できる履歴データがありませんでした');
+      }
+
+      const chartConfig = buildPpRankDualChartConfig({ labels, ppValues, rankValues });
+      const chartUrl = toQuickChartUrl(chartConfig);
+      const rankHistoryNote =
+        rankHistoryPoints.length > 0
+          ? '\nRankは公開履歴で連携前データを補完しています'
+          : '';
+
+      const embed = new EmbedBuilder()
+        .setColor('#5DADE2')
+        .setTitle(`${user.username} のPP+Rank推移 [${getModeLabel(mode)}]`)
+        .setURL(`https://osu.ppy.sh/users/${user.id}`)
+        .setDescription(`${period.label} / 二軸グラフ${rankHistoryNote}`)
+        .addFields(
+          {
+            name: '現在値',
+            value: [
+              `PP: ${formatMetricValue('pp', stats.pp)}`,
+              `Rank: ${formatRank(stats.global_rank)}`
+            ].join('\n'),
+            inline: true
+          },
+          {
+            name: `日次サマリー (最新${Math.min(DAILY_TABLE_MAX_ROWS, series.length)}日)`,
+            value: buildPpRankSummaryTable(series),
+            inline: false
+          }
+        )
+        .setImage(chartUrl)
+        .setTimestamp(new Date());
+
+      if (user.avatar_url) {
+        embed.setThumbnail(user.avatar_url);
+      }
+
+      return interaction.editReply({ embeds: [embed] });
     }
 
     const labels = [];
