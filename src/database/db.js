@@ -37,6 +37,24 @@ export async function testConnection() {
       )
     `);
 
+    // osu! リンク経験者の恒久追跡テーブル
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS osu_tracked_users (
+        discord_id VARCHAR(255) PRIMARY KEY,
+        osu_user_id BIGINT,
+        osu_username VARCHAR(255) NOT NULL,
+        first_linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query('ALTER TABLE osu_tracked_users ADD COLUMN IF NOT EXISTS osu_user_id BIGINT');
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_osu_tracked_users_lookup
+      ON osu_tracked_users (last_linked_at DESC)
+    `);
+
     // osu! 成長率表示用のスナップショットテーブル
     await client.query(`
       CREATE TABLE IF NOT EXISTS osu_user_snapshots (

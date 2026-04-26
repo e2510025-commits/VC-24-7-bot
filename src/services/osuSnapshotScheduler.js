@@ -4,6 +4,7 @@ import { insertBestScoreEvent } from '../database/osuBestScoreEvents.js';
 import { listGoalsExpiringSoon, markGoalReminderSent } from '../database/osuGoals.js';
 import { getGuildOsuSettings } from '../database/osuGuildSettings.js';
 import { listLinkedOsuUsers } from '../database/supabase.js';
+import { listTrackedOsuUsers, upsertTrackedOsuUser } from '../database/osuTrackedUsers.js';
 import {
   getClosestSnapshotBefore,
   getLatestSnapshot,
@@ -628,9 +629,33 @@ async function runCycle(client) {
   isRunning = true;
 
   try {
-    const links = await listLinkedOsuUsers();
-    if (links.length === 0) {
-      log('osu! 連携ユーザーが0件のため、スナップショット収集をスキップ', 'info');
+    let currentLinks = [];
+    try {
+      currentLinks = await listLinkedOsuUsers();
+    } catch (error) {
+      log(`osu! 連携ユーザー取得に失敗: ${error.message}`, 'error');
+    }
+
+    for (const link of currentLinks) {
+      const discordId = String(link.discord_id || '').trim();
+      const username = String(link.osu_username || '').trim();
+      if (!discordId || !username) {
+        continue;
+      }
+
+      try {
+        await upsertTrackedOsuUser({
+          discordId,
+          osuUsername: username
+        });
+      } catch (error) {
+        log(`osu! 追跡ユーザー更新失敗: ${discordId} - ${error.message}`, 'error');
+      }
+    }
+
+    const trackedUsers = await listTrackedOsuUsers();
+    if (trackedUsers.length === 0) {
+      log('osu! 追跡ユーザーが0件のため、スナップショット収集をスキップ', 'info');
       return;
     }
 
@@ -655,20 +680,30 @@ async function runCycle(client) {
     let bestPlayCount = 0;
 
     if (collectNow) {
-      for (const link of links) {
-        const username = String(link.osu_username || '').trim();
-        if (!username) {
+      for (const trackedUser of trackedUsers) {
+        const discordId = String(trackedUser.discord_id || '').trim();
+        const username = String(trackedUser.osu_username || '').trim();
+        const trackedOsuUserId = toFiniteNumber(trackedUser.osu_user_id);
+
+        if (!discordId || (!username && trackedOsuUserId === null)) {
           continue;
         }
 
         for (const mode of modes) {
           try {
-            const user = await fetchOsuUser(username, mode);
+            const lookupTarget = trackedOsuUserId !== null ? trackedOsuUserId : username;
+            const user = await fetchOsuUser(lookupTarget, mode);
             const stats = user.statistics || {};
             const previous = await getLatestSnapshot({ osuUserId: user.id, mode });
 
+            await upsertTrackedOsuUser({
+              discordId,
+              osuUserId: user.id,
+              osuUsername: user.username
+            });
+
             await saveOsuSnapshot({
-              discordId: link.discord_id,
+              discordId,
               osuUserId: user.id,
               osuUsername: user.username,
               mode,
@@ -685,7 +720,7 @@ async function runCycle(client) {
               alertCount += await sendGrowthAlertsToGuildChannels(
                 client,
                 guildSettingsMap,
-                link.discord_id,
+                discordId,
                 {
                 user,
                 mode,
@@ -703,7 +738,7 @@ async function runCycle(client) {
                 rankMilestone
               });
 
-              milestoneCount += await sendToGuildAlertChannels(client, guildSettingsMap, link.discord_id, milestoneEmbed);
+              milestoneCount += await sendToGuildAlertChannels(client, guildSettingsMap, discordId, milestoneEmbed);
             }
 
             const [bestScore] = await fetchBestScores(user.id, mode, 1);
@@ -717,7 +752,7 @@ async function runCycle(client) {
                 (previousBestPp === null || currentBestPp > previousBestPp + 0.0001);
 
               await upsertBestScoreRecord({
-                discordId: link.discord_id,
+                discordId,
                 osuUserId: user.id,
                 osuUsername: user.username,
                 mode,
@@ -733,7 +768,7 @@ async function runCycle(client) {
 
               if (scoreChanged && ppIncreased) {
                 await insertBestScoreEvent({
-                  discordId: link.discord_id,
+                  discordId,
                   osuUserId: user.id,
                   osuUsername: user.username,
                   mode,
@@ -748,7 +783,7 @@ async function runCycle(client) {
                   previousRecord: previousBest
                 });
 
-                bestPlayCount += await sendToGuildAlertChannels(client, guildSettingsMap, link.discord_id, bestEmbed);
+                bestPlayCount += await sendToGuildAlertChannels(client, guildSettingsMap, discordId, bestEmbed);
               }
             }
           } catch (error) {
@@ -761,7 +796,7 @@ async function runCycle(client) {
     }
 
     const reportMode = getModeForReports(modes);
-    await sendWeeklyReports(client, guildSettingsMap, links, reportMode);
+  await sendWeeklyReports(client, guildSettingsMap, trackedUsers, reportMode);
     const reminderCount = await sendGoalReminders(client);
 
     log(

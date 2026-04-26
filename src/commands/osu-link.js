@@ -1,5 +1,6 @@
 import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { upsertUserLink } from '../database/supabase.js';
+import { upsertTrackedOsuUser } from '../database/osuTrackedUsers.js';
 import { OsuApiError, fetchOsuUser } from '../utils/osuApi.js';
 import { log } from '../utils/logger.js';
 
@@ -24,6 +25,11 @@ export async function execute(interaction) {
   try {
     const user = await fetchOsuUser(username, null);
     await upsertUserLink(interaction.user.id, user.username);
+    await upsertTrackedOsuUser({
+      discordId: interaction.user.id,
+      osuUserId: user.id,
+      osuUsername: user.username
+    });
 
     await interaction.editReply(
       `✅ Discordアカウントと osu! ユーザー **${user.username}** を連携しました`
