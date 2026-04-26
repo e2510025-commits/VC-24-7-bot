@@ -1,6 +1,10 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getLinkedOsuUsername } from '../database/supabase.js';
-import { getClosestSnapshotBefore, saveOsuSnapshot } from '../database/osuSnapshots.js';
+import {
+  getClosestSnapshotBefore,
+  getSnapshotsSince,
+  saveOsuSnapshot
+} from '../database/osuSnapshots.js';
 import {
   OsuApiError,
   fetchOsuUser,
@@ -24,6 +28,9 @@ const BASELINE_CHOICES = [
   { name: '前週同曜日比', value: 'prev_week_same_day' },
   { name: '月初比', value: 'month_start' }
 ];
+
+const DAILY_SUMMARY_DAYS = 10;
+const DAILY_SUMMARY_LOOKBACK_DAYS = 14;
 
 export const data = new SlashCommandBuilder()
   .setName('osu-growth')
@@ -205,6 +212,79 @@ function resolveBaseline(baselineKey, now) {
   }
 }
 
+function toDateLabel(dateLike) {
+  const date = new Date(dateLike);
+  if (!Number.isFinite(date.getTime())) {
+    return '??';
+  }
+
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${month}/${day}`;
+}
+
+function formatRankMovement(previousRank, currentRank) {
+  const prev = toFiniteNumber(previousRank);
+  const curr = toFiniteNumber(currentRank);
+
+  if (prev === null || curr === null || prev <= 0 || curr <= 0) {
+    return 'N/A';
+  }
+
+  const delta = Math.trunc(prev - curr);
+  if (delta === 0) {
+    return '±0';
+  }
+
+  if (delta > 0) {
+    return `↑${formatNumber(delta)}`;
+  }
+
+  return `↓${formatNumber(Math.abs(delta))}`;
+}
+
+function buildDailySummaryTable(points) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return 'データ不足';
+  }
+
+  const rows = [];
+  const startIndex = Math.max(0, points.length - DAILY_SUMMARY_DAYS);
+
+  for (let index = startIndex; index < points.length; index += 1) {
+    const current = points[index];
+    const previous = index > 0 ? points[index - 1] : null;
+
+    const ppValue = toFiniteNumber(current.pp);
+    const ppDelta =
+      previous && ppValue !== null && toFiniteNumber(previous.pp) !== null
+        ? ppValue - toFiniteNumber(previous.pp)
+        : null;
+
+    rows.push(
+      `${toDateLabel(current.captured_at)} | ${ppValue === null ? 'N/A' : `${ppValue.toFixed(2)}pp`} | ${formatSignedDecimal(ppDelta)}pp | ${formatRankMovement(previous?.global_rank, current.global_rank)}`
+    );
+  }
+
+  const header = 'Date | PP | DeltaPP | Rank';
+  const content = ['```', header, ...rows, '```'].join('\n');
+
+  if (content.length <= 1000) {
+    return content;
+  }
+
+  // Embed field limit(1024)に収めるため、古い行から削る。
+  while (rows.length > 1) {
+    rows.shift();
+    const trimmed = ['```', header, ...rows, '```'].join('\n');
+    if (trimmed.length <= 1000) {
+      return trimmed;
+    }
+  }
+
+  return ['```', header, rows[0], '```'].join('\n');
+}
+
 export async function execute(interaction) {
   await interaction.deferReply();
 
@@ -232,6 +312,13 @@ export async function execute(interaction) {
     const now = Date.now();
     let windowSnapshots = [];
     let baselineComparison = null;
+
+    const dailySnapshots = await getSnapshotsSince({
+      osuUserId: userId,
+      mode,
+      sinceDate: new Date(now - DAILY_SUMMARY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000),
+      untilDate: new Date(now)
+    });
 
     if (baseline === 'multi') {
       windowSnapshots = await Promise.all(
@@ -272,6 +359,24 @@ export async function execute(interaction) {
       playTimeSeconds: stats.play_time,
       playCount: stats.play_count
     });
+
+    const currentPoint = {
+      captured_at: new Date(now).toISOString(),
+      pp: stats.pp,
+      global_rank: stats.global_rank
+    };
+
+    const mergedDailyPoints = [...dailySnapshots, currentPoint].sort(
+      (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+    );
+
+    const dailyPointMap = new Map();
+    for (const point of mergedDailyPoints) {
+      const key = new Date(point.captured_at).toISOString().slice(0, 10);
+      dailyPointMap.set(key, point);
+    }
+
+    const dailySummaryPoints = [...dailyPointMap.values()];
 
     const currentRank = formatRank(stats.global_rank);
     const currentCountryRank = formatRank(stats.country_rank);
@@ -322,6 +427,12 @@ export async function execute(interaction) {
         inline: false
       });
     }
+
+    fields.push({
+      name: `日次サマリー (最新${Math.min(DAILY_SUMMARY_DAYS, dailySummaryPoints.length)}日)`,
+      value: buildDailySummaryTable(dailySummaryPoints),
+      inline: false
+    });
 
     embed.addFields(...fields);
 
