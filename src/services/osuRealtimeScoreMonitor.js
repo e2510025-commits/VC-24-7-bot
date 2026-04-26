@@ -59,9 +59,20 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     : 'NM';
   
   const title = `${beatmapset.artist || 'Unknown Artist'} - ${beatmapset.title || 'Unknown Title'} [${beatmap.version || 'Unknown Diff'}]`;
-  const scoreUrl = score?.id
-    ? `https://osu.ppy.sh/scores/${score.mode || mode}/${score.id}`
-    : `https://osu.ppy.sh/users/${user.id}`;
+  
+  // 譜面リンク（beatmapset形式）
+  const beatmapsetId = beatmapset?.id;
+  const beatmapId = beatmap?.id;
+  const beatmapUrl = beatmapsetId && beatmapId
+    ? `https://osu.ppy.sh/beatmapsets/${beatmapsetId}#${mode}/${beatmapId}`
+    : beatmapsetId
+    ? `https://osu.ppy.sh/beatmapsets/${beatmapsetId}`
+    : null;
+  
+  // リプレイリンク
+  const replayUrl = score?.id
+    ? `https://osu.ppy.sh/scores/${score.mode || mode}/${score.id}/download`
+    : null;
   
   const pp = toFiniteNumber(score?.pp);
   const accuracy = toFiniteNumber(score?.accuracy);
@@ -97,11 +108,21 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     }
   }
   
+  // リンク行を作成
+  const links = [];
+  if (beatmapUrl) {
+    links.push(`[譜面](${beatmapUrl})`);
+  }
+  if (replayUrl) {
+    links.push(`[リプレイ](${replayUrl})`);
+  }
+  const linksText = links.length > 0 ? links.join(' • ') : '';
+  
   const embed = new EmbedBuilder()
     .setColor('#FF66AA')
     .setTitle(`${user.username} [${getModeLabel(mode)}]`)
-    .setURL(scoreUrl)
-    .setDescription(`**${title}**`)
+    .setURL(beatmapUrl || `https://osu.ppy.sh/users/${user.id}`)
+    .setDescription(`**${title}**${linksText ? `\n${linksText}` : ''}`)
     .addFields(
       {
         name: 'スコアPP',
