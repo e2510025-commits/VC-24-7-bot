@@ -119,6 +119,7 @@ export async function testConnection() {
         guild_id VARCHAR(255) PRIMARY KEY,
         alert_channel_id VARCHAR(255),
         report_channel_id VARCHAR(255),
+        realtime_score_channel_id VARCHAR(255),
         alert_pp_threshold DOUBLE PRECISION NOT NULL DEFAULT 10,
         alert_rank_threshold INTEGER NOT NULL DEFAULT 500,
         snapshot_interval_minutes INTEGER NOT NULL DEFAULT 60,
@@ -130,6 +131,9 @@ export async function testConnection() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+
+    // 既存テーブルへのカラム追加（後方互換性）
+    await client.query('ALTER TABLE osu_guild_settings ADD COLUMN IF NOT EXISTS realtime_score_channel_id VARCHAR(255)');
 
     // osu! ベストプレイ追跡
     await client.query(`

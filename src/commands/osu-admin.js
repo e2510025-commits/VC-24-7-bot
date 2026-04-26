@@ -213,14 +213,23 @@ export async function execute(interaction) {
         return interaction.editReply('❌ テキストチャンネルを指定してください');
       }
 
-      const patch = type === 'alert'
-        ? { alert_channel_id: channel.id }
-        : type === 'report'
-        ? { report_channel_id: channel.id }
-        : { realtime_score_channel_id: channel.id };
+      let patch;
+      let typeName;
+      
+      if (type === 'alert') {
+        patch = { alert_channel_id: channel.id };
+        typeName = '成長アラート';
+      } else if (type === 'report') {
+        patch = { report_channel_id: channel.id };
+        typeName = '週次レポート';
+      } else if (type === 'realtime-score') {
+        patch = { realtime_score_channel_id: channel.id };
+        typeName = 'リアルタイムスコア';
+      } else {
+        return interaction.editReply('❌ 不明なチャンネルタイプです');
+      }
 
       await upsertGuildOsuSettings(guildId, patch);
-      const typeName = type === 'alert' ? '成長アラート' : type === 'report' ? '週次レポート' : 'リアルタイムスコア';
       return interaction.editReply(`✅ ${typeName}の通知先を ${channel} に設定しました`);
     }
 
@@ -272,6 +281,6 @@ export async function execute(interaction) {
   } catch (error) {
     log(`/osu-admin エラー: ${error.message}`, 'error');
     log(`エラースタック: ${error.stack}`, 'error');
-    return interaction.editReply('❌ 設定更新中にエラーが発生しました');
+    return interaction.editReply(`❌ 設定更新中にエラーが発生しました: ${error.message}`);
   }
 }

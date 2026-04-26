@@ -279,6 +279,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ 目標処理中にエラーが発生しました');
+    return interaction.editReply(`❌ 目標処理中にエラーが発生しました: ${error.message}`);
   }
 }
