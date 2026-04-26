@@ -108,6 +108,12 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     }
   }
   
+  // デバッグログ
+  if (previousStats) {
+    const { log: debugLog } = await import('../utils/logger.js');
+    debugLog(`前回比計算: PP ${previousPp} → ${currentPp}, Rank ${previousRank} → ${currentRank}`, 'info');
+  }
+  
   // リンク行を作成
   const links = [];
   if (beatmapUrl) {
@@ -340,6 +346,8 @@ async function monitorCycle(client) {
                 pp: userStats.pp,
                 global_rank: userStats.global_rank
               });
+              
+              log(`統計キャッシュ更新: ${cacheKey} - PP: ${userStats.pp}, Rank: ${userStats.global_rank}`, 'info');
             }
 
             processedScores.add(scoreKey);
