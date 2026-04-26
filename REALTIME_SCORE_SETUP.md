@@ -28,8 +28,10 @@ psql $DATABASE_URL -f migrations/add_realtime_score_channel.sql
 ```env
 # osu! リアルタイムスコア監視設定
 OSU_REALTIME_INTERVAL_SECONDS=60  # チェック間隔（秒）
-OSU_REALTIME_MODES=osu            # 監視モード（カンマ区切り: osu,taiko,fruits,mania）
+OSU_REALTIME_MODES=osu,taiko,fruits,mania  # 監視モード（カンマ区切り）
 ```
+
+**重要**: 全モード（osu, taiko, fruits, mania）を監視する場合は、上記のように設定してください。デフォルトは`osu`のみです。
 
 ### 3. 投稿先チャンネル設定
 
@@ -93,10 +95,16 @@ Discordサーバーで以下のコマンドを実行:
 
 ## 設定例
 
-### 複数モード監視
+### 全モード監視（推奨）
 
 ```env
-OSU_REALTIME_MODES=osu,taiko,mania
+OSU_REALTIME_MODES=osu,taiko,fruits,mania
+```
+
+### 特定モードのみ監視
+
+```env
+OSU_REALTIME_MODES=osu,mania
 ```
 
 ### 高頻度監視（30秒）
