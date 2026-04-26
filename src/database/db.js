@@ -125,10 +125,19 @@ export async function testConnection() {
         pp DOUBLE PRECISION,
         beatmap_id BIGINT,
         beatmap_title VARCHAR(512),
+        accuracy DOUBLE PRECISION,
+        miss_count INTEGER,
+        max_combo INTEGER,
+        mods VARCHAR(128),
         recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (osu_user_id, mode)
       )
     `);
+
+    await client.query('ALTER TABLE osu_best_scores ADD COLUMN IF NOT EXISTS accuracy DOUBLE PRECISION');
+    await client.query('ALTER TABLE osu_best_scores ADD COLUMN IF NOT EXISTS miss_count INTEGER');
+    await client.query('ALTER TABLE osu_best_scores ADD COLUMN IF NOT EXISTS max_combo INTEGER');
+    await client.query('ALTER TABLE osu_best_scores ADD COLUMN IF NOT EXISTS mods VARCHAR(128)');
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_osu_best_scores_discord_mode

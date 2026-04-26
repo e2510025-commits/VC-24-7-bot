@@ -31,6 +31,7 @@ const BASELINE_CHOICES = [
 
 const DAILY_SUMMARY_DAYS = 10;
 const DAILY_SUMMARY_LOOKBACK_DAYS = 14;
+const FORECAST_LOOKBACK_DAYS = 30;
 
 export const data = new SlashCommandBuilder()
   .setName('osu-growth')
@@ -285,6 +286,70 @@ function buildDailySummaryTable(points) {
   return ['```', header, rows[0], '```'].join('\n');
 }
 
+function formatProjectedRankDelta(delta) {
+  const numeric = toFiniteNumber(delta);
+  if (numeric === null) {
+    return 'N/A';
+  }
+
+  const abs = Math.round(Math.abs(numeric));
+  if (abs === 0) {
+    return '±0';
+  }
+
+  // 順位は値が小さくなるほど改善なので、減少は↑で表現する。
+  if (numeric < 0) {
+    return `↑${formatNumber(abs)}`;
+  }
+  return `↓${formatNumber(abs)}`;
+}
+
+function buildForecastFieldValue(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return 'データ不足（予測には2日以上の履歴が必要です）';
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const firstTime = new Date(first.captured_at).getTime();
+  const lastTime = new Date(last.captured_at).getTime();
+  const spanDays = (lastTime - firstTime) / (24 * 60 * 60 * 1000);
+
+  if (!Number.isFinite(spanDays) || spanDays < 1) {
+    return 'データ不足（予測には1日以上の履歴が必要です）';
+  }
+
+  const firstPp = toFiniteNumber(first.pp);
+  const lastPp = toFiniteNumber(last.pp);
+  const ppPerDay =
+    firstPp !== null && lastPp !== null
+      ? (lastPp - firstPp) / spanDays
+      : null;
+
+  const firstRank = toFiniteNumber(first.global_rank);
+  const lastRank = toFiniteNumber(last.global_rank);
+  const rankPerDay =
+    firstRank !== null && lastRank !== null && firstRank > 0 && lastRank > 0
+      ? (lastRank - firstRank) / spanDays
+      : null;
+
+  const windows = [
+    { label: '1日', days: 1 },
+    { label: '1週', days: 7 },
+    { label: '1ヶ月', days: 30 }
+  ];
+
+  return windows
+    .map(window => {
+      const ppDelta = ppPerDay === null ? 'N/A' : `${formatSignedDecimal(ppPerDay * window.days)}pp`;
+      const rankDelta = formatProjectedRankDelta(
+        rankPerDay === null ? null : rankPerDay * window.days
+      );
+      return `${window.label}: PP ${ppDelta} / 順位 ${rankDelta}`;
+    })
+    .join('\n');
+}
+
 export async function execute(interaction) {
   await interaction.deferReply();
 
@@ -316,7 +381,7 @@ export async function execute(interaction) {
     const dailySnapshots = await getSnapshotsSince({
       osuUserId: userId,
       mode,
-      sinceDate: new Date(now - DAILY_SUMMARY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000),
+      sinceDate: new Date(now - FORECAST_LOOKBACK_DAYS * 24 * 60 * 60 * 1000),
       untilDate: new Date(now)
     });
 
@@ -377,6 +442,8 @@ export async function execute(interaction) {
     }
 
     const dailySummaryPoints = [...dailyPointMap.values()];
+    const dailySummaryStart = Math.max(0, dailySummaryPoints.length - DAILY_SUMMARY_DAYS);
+    const recentSummaryPoints = dailySummaryPoints.slice(dailySummaryStart);
 
     const currentRank = formatRank(stats.global_rank);
     const currentCountryRank = formatRank(stats.country_rank);
@@ -429,8 +496,14 @@ export async function execute(interaction) {
     }
 
     fields.push({
-      name: `日次サマリー (最新${Math.min(DAILY_SUMMARY_DAYS, dailySummaryPoints.length)}日)`,
-      value: buildDailySummaryTable(dailySummaryPoints),
+      name: `日次サマリー (最新${Math.min(DAILY_SUMMARY_DAYS, recentSummaryPoints.length)}日)`,
+      value: buildDailySummaryTable(recentSummaryPoints),
+      inline: false
+    });
+
+    fields.push({
+      name: '成長予測 (直近30日傾向)',
+      value: buildForecastFieldValue(dailySummaryPoints),
       inline: false
     });
 

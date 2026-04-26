@@ -53,6 +53,72 @@ function formatSignedPercent(delta) {
   return `${sign}${Math.abs(numeric).toFixed(2)}%`;
 }
 
+function averageFromScores(scores, selector) {
+  if (!Array.isArray(scores) || scores.length === 0) {
+    return null;
+  }
+
+  const values = scores
+    .map(selector)
+    .map(value => toNumber(value))
+    .filter(value => value !== null);
+
+  return average(values);
+}
+
+function starBucket(star) {
+  const value = toNumber(star);
+  if (value === null) return null;
+  if (value < 3) return '〜2.99★';
+  if (value < 5) return '3.00〜4.99★';
+  return '5.00★〜';
+}
+
+function lengthBucket(seconds) {
+  const value = toNumber(seconds);
+  if (value === null) return null;
+  if (value < 90) return '〜1:29';
+  if (value < 210) return '1:30〜3:29';
+  return '3:30〜';
+}
+
+function topBucketLabel(scores, bucketSelector) {
+  const counts = new Map();
+
+  for (const score of scores) {
+    const label = bucketSelector(score);
+    if (!label) {
+      continue;
+    }
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) {
+    return 'N/A';
+  }
+
+  return `${sorted[0][0]} (${sorted[0][1]}譜面)`;
+}
+
+function topMods(scores) {
+  const counts = new Map();
+
+  for (const score of scores) {
+    const mods = Array.isArray(score?.mods) && score.mods.length > 0
+      ? score.mods.join('')
+      : 'NM';
+    counts.set(mods, (counts.get(mods) || 0) + 1);
+  }
+
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) {
+    return 'N/A';
+  }
+
+  return `${sorted[0][0]} (${sorted[0][1]}回)`;
+}
+
 async function resolveTargetUsername(interaction) {
   const input = interaction.options.getString('username');
   if (input?.trim()) {
@@ -161,6 +227,13 @@ export async function execute(interaction) {
 
     const passRate = scores.length > 0 ? successful.length / scores.length : null;
 
+    const avgStar = averageFromScores(successful, score => score?.beatmap?.difficulty_rating);
+    const avgLength = averageFromScores(successful, score => score?.beatmap?.total_length);
+    const avgBpm = averageFromScores(successful, score => score?.beatmap?.bpm);
+    const topStarRange = topBucketLabel(successful, score => starBucket(score?.beatmap?.difficulty_rating));
+    const topLengthRange = topBucketLabel(successful, score => lengthBucket(score?.beatmap?.total_length));
+    const topModsLabel = topMods(successful);
+
     const embed = new EmbedBuilder()
       .setColor('#2ECC71')
       .setTitle(`${user.username} の品質分析 [${modeLabel}]`)
@@ -200,6 +273,16 @@ export async function execute(interaction) {
         {
           name: '補足',
           value: `成功 ${successful.length} / 失敗 ${failed.length} / 取得上限 ${limit}`,
+          inline: false
+        },
+        {
+          name: '譜面傾向（成功のみ）',
+          value: [
+            `平均: ${avgStar === null ? 'N/A' : `${avgStar.toFixed(2)}★`} / ${avgLength === null ? 'N/A' : `${Math.round(avgLength)}秒`} / ${avgBpm === null ? 'N/A' : `${Math.round(avgBpm)} BPM`}`,
+            `最多★帯: ${topStarRange}`,
+            `最多尺: ${topLengthRange}`,
+            `最多MOD: ${topModsLabel}`
+          ].join('\n'),
           inline: false
         }
       )

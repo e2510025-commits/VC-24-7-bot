@@ -21,7 +21,8 @@ import {
   PERIOD_MAP,
   computeGrowthDelta,
   formatMetricDelta,
-  metricLabel
+  metricLabel,
+  toQuickChartUrl
 } from '../utils/osuGrowthUtils.js';
 import { log } from '../utils/logger.js';
 
@@ -171,12 +172,76 @@ function buildMilestoneEmbed({ user, mode, ppMilestone, rankMilestone }) {
     .setTimestamp(new Date());
 }
 
+function formatAccuracyPercent(accuracyRatio) {
+  const value = toFiniteNumber(accuracyRatio);
+  if (value === null) {
+    return 'N/A';
+  }
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function formatCombo(comboValue) {
+  const value = toFiniteNumber(comboValue);
+  if (value === null) {
+    return 'N/A';
+  }
+  return `${formatNumber(Math.trunc(value))}x`;
+}
+
+function buildBestScoreComment({ ppDelta, accuracyDelta, missDelta, comboDelta }) {
+  const comments = [];
+
+  if (ppDelta !== null) {
+    if (ppDelta >= 20) {
+      comments.push('大幅なPP更新。難度帯の上振れが出ています。');
+    } else if (ppDelta >= 8) {
+      comments.push('PPがしっかり伸びています。再現できると安定成長です。');
+    }
+  }
+
+  if (accuracyDelta !== null && accuracyDelta > 0.002) {
+    comments.push('精度が改善。判定コントロールが良化しています。');
+  }
+
+  if (missDelta !== null && missDelta < 0) {
+    comments.push('Miss減少。地力または譜面理解が進んでいます。');
+  }
+
+  if (comboDelta !== null && comboDelta > 0) {
+    comments.push('最大コンボ更新。終盤の安定感が上がっています。');
+  }
+
+  if (comments.length === 0) {
+    return 'ベスト更新を確認。引き続き同系統譜面で再現性を高めましょう。';
+  }
+
+  return comments.slice(0, 2).join('\n');
+}
+
 function buildBestPlayEmbed({ user, mode, bestScore, previousRecord }) {
   const ppNow = toFiniteNumber(bestScore?.pp);
   const ppBefore = toFiniteNumber(previousRecord?.pp);
+  const ppDelta = ppNow !== null && ppBefore !== null ? ppNow - ppBefore : null;
+
+  const accuracyNow = toFiniteNumber(bestScore?.accuracy);
+  const accuracyBefore = toFiniteNumber(previousRecord?.accuracy);
+  const accuracyDelta =
+    accuracyNow !== null && accuracyBefore !== null ? accuracyNow - accuracyBefore : null;
+
+  const missNow = toFiniteNumber(bestScore?.statistics?.miss);
+  const missBefore = toFiniteNumber(previousRecord?.miss_count);
+  const missDelta = missNow !== null && missBefore !== null ? missNow - missBefore : null;
+
+  const comboNow = toFiniteNumber(bestScore?.max_combo);
+  const comboBefore = toFiniteNumber(previousRecord?.max_combo);
+  const comboDelta = comboNow !== null && comboBefore !== null ? comboNow - comboBefore : null;
+
   const scoreId = bestScore?.id;
   const beatmap = bestScore?.beatmap || {};
   const beatmapset = bestScore?.beatmapset || {};
+  const mods = Array.isArray(bestScore?.mods) && bestScore.mods.length > 0
+    ? bestScore.mods.join(', ')
+    : 'NM';
   const title = `${beatmapset.artist || 'Unknown Artist'} - ${beatmapset.title || 'Unknown Title'} [${beatmap.version || 'Unknown Diff'}]`;
   const scoreUrl = scoreId
     ? `https://osu.ppy.sh/scores/${bestScore.mode || mode}/${scoreId}`
@@ -198,11 +263,95 @@ function buildBestPlayEmbed({ user, mode, bestScore, previousRecord }) {
         value:
           ppNow === null || ppBefore === null
             ? 'N/A'
-            : formatMetricDelta('pp', ppNow - ppBefore),
+            : formatMetricDelta('pp', ppDelta),
+        inline: true
+      },
+      {
+        name: '精度',
+        value: `${formatAccuracyPercent(accuracyNow)} (${formatMetricDelta('pp', accuracyDelta === null ? null : accuracyDelta * 100).replace('pp', '%')})`,
+        inline: true
+      },
+      {
+        name: 'Miss',
+        value:
+          missNow === null
+            ? 'N/A'
+            : `${formatNumber(Math.trunc(missNow))} (${missDelta === null ? 'N/A' : (missDelta === 0 ? '±0' : missDelta > 0 ? `+${formatNumber(Math.trunc(missDelta))}` : `-${formatNumber(Math.trunc(Math.abs(missDelta)))}`)})`,
+        inline: true
+      },
+      {
+        name: '最大コンボ',
+        value:
+          comboNow === null
+            ? 'N/A'
+            : `${formatCombo(comboNow)} (${comboDelta === null ? 'N/A' : comboDelta === 0 ? '±0' : comboDelta > 0 ? `+${formatNumber(Math.trunc(comboDelta))}` : `-${formatNumber(Math.trunc(Math.abs(comboDelta)))}`})`,
+        inline: true
+      },
+      {
+        name: 'MOD',
+        value: mods,
+        inline: true
+      },
+      {
+        name: '自動コメント',
+        value: buildBestScoreComment({
+          ppDelta,
+          accuracyDelta,
+          missDelta,
+          comboDelta
+        }),
         inline: true
       }
     )
     .setTimestamp(new Date());
+}
+
+function buildWeeklyReportChartUrl(rows, metric, periodLabel, mode) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+
+  const labels = rows.map((row, index) => {
+    const username = String(row.osuUsername || `User${index + 1}`).slice(0, 12);
+    return `#${index + 1} ${username}`;
+  });
+
+  const values = rows.map(row => {
+    const numeric = toFiniteNumber(row.delta);
+    return numeric === null ? 0 : Number(numeric.toFixed(2));
+  });
+
+  const config = {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: `${periodLabel} ${metricLabel(metric)} 変化`,
+          data: values,
+          backgroundColor: '#4F46E5'
+        }
+      ]
+    },
+    options: {
+      plugins: {
+        title: {
+          display: true,
+          text: `週次TOP成長 [${getModeLabel(mode)}]`
+        },
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true
+        }
+      }
+    }
+  };
+
+  return toQuickChartUrl(config);
 }
 
 async function sendToGuildAlertChannels(client, guildSettingsMap, discordId, embed) {
@@ -403,6 +552,7 @@ async function sendWeeklyReports(client, guildSettingsMap, links, mode) {
 
     const channel = await client.channels.fetch(settings.report_channel_id).catch(() => null);
     if (channel?.isTextBased() && sorted.length > 0) {
+      const chartUrl = buildWeeklyReportChartUrl(sorted, metric, period.label, mode);
       const embed = new EmbedBuilder()
         .setColor('#9B59B6')
         .setTitle(`週次レポート [${getModeLabel(mode)}]`)
@@ -416,6 +566,10 @@ async function sendWeeklyReports(client, guildSettingsMap, links, mode) {
             .join('\n')
         })
         .setTimestamp(new Date());
+
+      if (chartUrl) {
+        embed.setImage(chartUrl);
+      }
 
       await channel.send({ embeds: [embed] }).catch(() => null);
     }
@@ -569,7 +723,11 @@ async function runCycle(client) {
                 scoreId: bestScore.id,
                 pp: bestScore.pp,
                 beatmapId: bestScore.beatmap?.id,
-                beatmapTitle: `${bestScore.beatmapset?.artist || 'Unknown Artist'} - ${bestScore.beatmapset?.title || 'Unknown Title'} [${bestScore.beatmap?.version || 'Unknown Diff'}]`
+                beatmapTitle: `${bestScore.beatmapset?.artist || 'Unknown Artist'} - ${bestScore.beatmapset?.title || 'Unknown Title'} [${bestScore.beatmap?.version || 'Unknown Diff'}]`,
+                accuracy: bestScore.accuracy,
+                missCount: bestScore.statistics?.miss,
+                maxCombo: bestScore.max_combo,
+                mods: Array.isArray(bestScore.mods) ? bestScore.mods.join(',') : null
               });
 
               if (scoreChanged && ppIncreased) {

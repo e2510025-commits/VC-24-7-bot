@@ -29,6 +29,10 @@ export async function getBestScoreRecord(osuUserId, mode = 'osu') {
       pp,
       beatmap_id,
       beatmap_title,
+      accuracy,
+      miss_count,
+      max_combo,
+      mods,
       recorded_at
     FROM osu_best_scores
     WHERE osu_user_id = $1
@@ -48,7 +52,11 @@ export async function upsertBestScoreRecord({
   scoreId,
   pp,
   beatmapId,
-  beatmapTitle
+  beatmapTitle,
+  accuracy,
+  missCount,
+  maxCombo,
+  mods
 }) {
   const userId = Number(osuUserId);
   const normalizedMode = String(mode || 'osu').trim().toLowerCase() || 'osu';
@@ -67,9 +75,13 @@ export async function upsertBestScoreRecord({
       pp,
       beatmap_id,
       beatmap_title,
+      accuracy,
+      miss_count,
+      max_combo,
+      mods,
       recorded_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
     ON CONFLICT (osu_user_id, mode)
     DO UPDATE SET
       discord_id = EXCLUDED.discord_id,
@@ -78,6 +90,10 @@ export async function upsertBestScoreRecord({
       pp = EXCLUDED.pp,
       beatmap_id = EXCLUDED.beatmap_id,
       beatmap_title = EXCLUDED.beatmap_title,
+      accuracy = EXCLUDED.accuracy,
+      miss_count = EXCLUDED.miss_count,
+      max_combo = EXCLUDED.max_combo,
+      mods = EXCLUDED.mods,
       recorded_at = NOW()
     RETURNING
       id,
@@ -89,6 +105,10 @@ export async function upsertBestScoreRecord({
       pp,
       beatmap_id,
       beatmap_title,
+      accuracy,
+      miss_count,
+      max_combo,
+      mods,
       recorded_at`,
     [
       discordId ? String(discordId) : null,
@@ -98,7 +118,11 @@ export async function upsertBestScoreRecord({
       toNullableInteger(scoreId),
       toNullableNumber(pp),
       toNullableInteger(beatmapId),
-      beatmapTitle ? String(beatmapTitle).slice(0, 512) : null
+      beatmapTitle ? String(beatmapTitle).slice(0, 512) : null,
+      toNullableNumber(accuracy),
+      toNullableInteger(missCount),
+      toNullableInteger(maxCombo),
+      mods ? String(mods).slice(0, 128) : null
     ]
   );
 
