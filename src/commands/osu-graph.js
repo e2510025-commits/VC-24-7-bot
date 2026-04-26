@@ -33,7 +33,8 @@ const GRAPH_TYPE_CHOICES = [
   { name: '単一指標ライン', value: 'metric_line' },
   { name: 'PP + Rank 二軸', value: 'pp_rank_dual' },
   { name: 'PP + Rank 予測グラフ', value: 'pp_rank_forecast' },
-  { name: 'Best PP 散布図', value: 'best_pp_scatter' }
+  { name: 'Best PP 散布図', value: 'best_pp_scatter' },
+  { name: '複数人比較', value: 'compare_users' }
 ];
 
 const FORECAST_DAYS_CHOICES = [
@@ -350,6 +351,62 @@ function buildChartConfig({ labels, values, metric }) {
       plugins: {
         legend: {
           display: false
+        },
+        title: {
+          display: true,
+          text: title
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: false,
+          reverse: rankChart
+        }
+      }
+    }
+  };
+}
+
+function buildCompareUsersChartConfig({ userDatasets, metric }) {
+  const title = `${metricLabel(metric)} 比較`;
+  const rankChart = metric === 'global_rank';
+  
+  const colors = [
+    { border: '#00A8FF', bg: 'rgba(0, 168, 255, 0.20)' },
+    { border: '#FF6B6B', bg: 'rgba(255, 107, 107, 0.20)' },
+    { border: '#4ECB71', bg: 'rgba(78, 203, 113, 0.20)' },
+    { border: '#FFA502', bg: 'rgba(255, 165, 2, 0.20)' },
+    { border: '#9B59B6', bg: 'rgba(155, 89, 182, 0.20)' }
+  ];
+
+  const datasets = userDatasets.map((userData, index) => {
+    const color = colors[index % colors.length];
+    return {
+      label: userData.username,
+      data: userData.values,
+      borderColor: color.border,
+      backgroundColor: color.bg,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      fill: false,
+      tension: 0.25
+    };
+  });
+
+  // 全ユーザーの日付ラベルを統合（重複排除してソート）
+  const allLabels = [...new Set(userDatasets.flatMap(u => u.labels))].sort();
+
+  return {
+    type: 'line',
+    data: {
+      labels: allLabels,
+      datasets
+    },
+    options: {
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top'
         },
         title: {
           display: true,
@@ -793,6 +850,30 @@ export const data = new SlashCommandBuilder()
   )
   .addStringOption(option =>
     option
+      .setName('username2')
+      .setDescription('比較する2人目のosu!ユーザー名（複数人比較時）')
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
+      .setName('username3')
+      .setDescription('比較する3人目のosu!ユーザー名（複数人比較時）')
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
+      .setName('username4')
+      .setDescription('比較する4人目のosu!ユーザー名（複数人比較時）')
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
+      .setName('username5')
+      .setDescription('比較する5人目のosu!ユーザー名（複数人比較時）')
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
       .setName('mode')
       .setDescription('表示するモード')
       .addChoices(
@@ -850,6 +931,107 @@ export async function execute(interaction) {
       return interaction.editReply('❌ span の指定が不正です');
     }
 
+    // 複数人比較モード
+    if (chartType === 'compare_users') {
+      const usernames = [
+        interaction.options.getString('username'),
+        interaction.options.getString('username2'),
+        interaction.options.getString('username3'),
+        interaction.options.getString('username4'),
+        interaction.options.getString('username5')
+      ].filter(Boolean);
+
+      // username1が未指定の場合は連携ユーザーを使用
+      if (usernames.length === 0) {
+        const linkedUsername = await getLinkedOsuUsername(interaction.user.id);
+        if (linkedUsername) {
+          usernames.push(linkedUsername);
+        }
+      }
+
+      if (usernames.length < 2) {
+        return interaction.editReply('❌ 複数人比較には最低2人のユーザー名が必要です');
+      }
+
+      const now = new Date();
+      const sinceDate = period.isAllTime ? new Date(0) : new Date(now.getTime() - period.ms);
+      const userDatasets = [];
+
+      for (const username of usernames) {
+        try {
+          const user = await fetchOsuUser(username, mode);
+          const stats = user.statistics || {};
+
+          // 現在のスナップショットを保存
+          await saveOsuSnapshot({
+            discordId: interaction.user.id,
+            osuUserId: user.id,
+            osuUsername: user.username,
+            mode,
+            pp: stats.pp,
+            globalRank: stats.global_rank,
+            countryRank: stats.country_rank,
+            playTimeSeconds: stats.play_time,
+            playCount: stats.play_count
+          });
+
+          // スナップショット取得
+          const snapshots = await getSnapshotsSince({
+            osuUserId: user.id,
+            mode,
+            sinceDate
+          });
+
+          const currentPoint = {
+            captured_at: now.toISOString(),
+            pp: stats.pp,
+            global_rank: stats.global_rank,
+            play_time_seconds: stats.play_time,
+            play_count: stats.play_count
+          };
+
+          const allPoints = [...snapshots, currentPoint];
+          const labels = allPoints.map(point => toDateLabel(point.captured_at));
+          const values = allPoints.map(point => {
+            const value = getSnapshotValue(point, metric);
+            return toFiniteNumber(value);
+          });
+
+          userDatasets.push({
+            username: user.username,
+            labels,
+            values
+          });
+        } catch (error) {
+          log(`ユーザー ${username} のデータ取得失敗: ${error.message}`, 'error');
+        }
+      }
+
+      if (userDatasets.length === 0) {
+        return interaction.editReply('❌ 有効なユーザーデータを取得できませんでした');
+      }
+
+      const chartConfig = buildCompareUsersChartConfig({ userDatasets, metric });
+      const chartUrl = toQuickChartUrl(chartConfig);
+
+      const embed = new EmbedBuilder()
+        .setColor('#6C5CE7')
+        .setTitle(`複数人比較: ${metricLabel(metric)} [${getModeLabel(mode)}]`)
+        .setDescription(`期間: ${period.label}\n比較人数: ${userDatasets.length}人`)
+        .addFields(
+          userDatasets.map((data, index) => ({
+            name: `${index + 1}. ${data.username}`,
+            value: `データ点数: ${data.values.filter(v => v !== null).length}`,
+            inline: true
+          }))
+        )
+        .setImage(chartUrl)
+        .setTimestamp(new Date());
+
+      return interaction.editReply({ embeds: [embed] });
+    }
+
+    // 単一ユーザーモード（既存の処理）
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
       return interaction.editReply(
