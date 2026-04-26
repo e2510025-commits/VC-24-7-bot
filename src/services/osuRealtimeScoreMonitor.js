@@ -108,6 +108,8 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
     }
   }
   
+  log(`[Embed生成] ${user.username} - 現在PP: ${currentPp}, 前回PP: ${previousPp}, 現在順位: ${currentRank}, 前回順位: ${previousRank}`, 'info');
+  
   // リンク行を作成
   const links = [];
   if (beatmapUrl) {
@@ -290,6 +292,9 @@ async function monitorCycle(client) {
           // 前回キャッシュされた統計を取得
           const previousStats = userStatsCache.get(cacheKey) || null;
           
+          log(`[キャッシュ確認] ${cacheKey} - 前回PP: ${previousStats?.pp || 'なし'}, 前回順位: ${previousStats?.global_rank || 'なし'}`, 'info');
+          log(`[現在の統計] ${cacheKey} - 現在PP: ${userStats.pp}, 現在順位: ${userStats.global_rank}`, 'info');
+          
           // 最新5件のスコアを取得（ユーザーIDを使用）
           const recentScores = await fetchRecentScores(osuUserId, mode, 5);
           
@@ -344,7 +349,9 @@ async function monitorCycle(client) {
                 global_rank: userStats.global_rank
               });
               
-              log(`統計キャッシュ更新: ${cacheKey} - PP: ${userStats.pp}, Rank: ${userStats.global_rank}`, 'info');
+              log(`[キャッシュ更新] ${cacheKey} - PP: ${userStats.pp}, Rank: ${userStats.global_rank}`, 'success');
+            } else {
+              log(`[スコア投稿失敗] ${cacheKey} - チャンネルが見つからないか、ユーザーがメンバーではありません`, 'info');
             }
 
             processedScores.add(scoreKey);
