@@ -66,7 +66,8 @@ export const data = new SlashCommandBuilder()
           .setDescription('設定対象')
           .addChoices(
             { name: '成長アラート', value: 'alert' },
-            { name: '週次レポート', value: 'report' }
+            { name: '週次レポート', value: 'report' },
+            { name: 'リアルタイムスコア', value: 'realtime-score' }
           )
           .setRequired(true)
       )
@@ -175,7 +176,7 @@ export async function execute(interaction) {
         .addFields(
           {
             name: '通知チャンネル',
-            value: `成長アラート: ${channelLabel(settings.alert_channel_id)}\n週次レポート: ${channelLabel(settings.report_channel_id)}`,
+            value: `成長アラート: ${channelLabel(settings.alert_channel_id)}\n週次レポート: ${channelLabel(settings.report_channel_id)}\nリアルタイムスコア: ${channelLabel(settings.realtime_score_channel_id)}`,
             inline: false
           },
           {
@@ -214,10 +215,13 @@ export async function execute(interaction) {
 
       const patch = type === 'alert'
         ? { alert_channel_id: channel.id }
-        : { report_channel_id: channel.id };
+        : type === 'report'
+        ? { report_channel_id: channel.id }
+        : { realtime_score_channel_id: channel.id };
 
       await upsertGuildOsuSettings(guildId, patch);
-      return interaction.editReply(`✅ ${type === 'alert' ? '成長アラート' : '週次レポート'}の通知先を ${channel} に設定しました`);
+      const typeName = type === 'alert' ? '成長アラート' : type === 'report' ? '週次レポート' : 'リアルタイムスコア';
+      return interaction.editReply(`✅ ${typeName}の通知先を ${channel} に設定しました`);
     }
 
     if (subcommand === 'set-threshold') {

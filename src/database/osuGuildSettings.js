@@ -3,6 +3,7 @@ import { pool } from './db.js';
 const DEFAULTS = {
   alert_channel_id: null,
   report_channel_id: null,
+  realtime_score_channel_id: null,
   alert_pp_threshold: 10,
   alert_rank_threshold: 500,
   snapshot_interval_minutes: 60,
@@ -29,6 +30,7 @@ export async function getGuildOsuSettings(guildId) {
       guild_id,
       alert_channel_id,
       report_channel_id,
+      realtime_score_channel_id,
       alert_pp_threshold,
       alert_rank_threshold,
       snapshot_interval_minutes,
@@ -52,6 +54,7 @@ export async function getGuildOsuSettings(guildId) {
     guild_id: row.guild_id,
     alert_channel_id: row.alert_channel_id,
     report_channel_id: row.report_channel_id,
+    realtime_score_channel_id: row.realtime_score_channel_id,
     alert_pp_threshold: toNumber(row.alert_pp_threshold, DEFAULTS.alert_pp_threshold),
     alert_rank_threshold: Math.trunc(
       toNumber(row.alert_rank_threshold, DEFAULTS.alert_rank_threshold)
@@ -85,6 +88,7 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       guild_id,
       alert_channel_id,
       report_channel_id,
+      realtime_score_channel_id,
       alert_pp_threshold,
       alert_rank_threshold,
       snapshot_interval_minutes,
@@ -95,11 +99,12 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       report_top,
       updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
     ON CONFLICT (guild_id)
     DO UPDATE SET
       alert_channel_id = EXCLUDED.alert_channel_id,
       report_channel_id = EXCLUDED.report_channel_id,
+      realtime_score_channel_id = EXCLUDED.realtime_score_channel_id,
       alert_pp_threshold = EXCLUDED.alert_pp_threshold,
       alert_rank_threshold = EXCLUDED.alert_rank_threshold,
       snapshot_interval_minutes = EXCLUDED.snapshot_interval_minutes,
@@ -113,6 +118,7 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       guild_id,
       alert_channel_id,
       report_channel_id,
+      realtime_score_channel_id,
       alert_pp_threshold,
       alert_rank_threshold,
       snapshot_interval_minutes,
@@ -126,6 +132,7 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       id,
       merged.alert_channel_id ? String(merged.alert_channel_id) : null,
       merged.report_channel_id ? String(merged.report_channel_id) : null,
+      merged.realtime_score_channel_id ? String(merged.realtime_score_channel_id) : null,
       toNumber(merged.alert_pp_threshold, DEFAULTS.alert_pp_threshold),
       Math.trunc(toNumber(merged.alert_rank_threshold, DEFAULTS.alert_rank_threshold)),
       Math.max(10, Math.trunc(toNumber(merged.snapshot_interval_minutes, DEFAULTS.snapshot_interval_minutes))),

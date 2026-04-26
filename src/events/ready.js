@@ -1,6 +1,7 @@
 import { log } from '../utils/logger.js';
 import { VoiceConnectionStatus } from '@discordjs/voice';
 import { startOsuSnapshotScheduler } from '../services/osuSnapshotScheduler.js';
+import { startOsuRealtimeScoreMonitor } from '../services/osuRealtimeScoreMonitor.js';
 
 export const name = 'ready';
 export const once = true;
@@ -19,6 +20,9 @@ export async function execute(client) {
 
   // osu! 成長データ収集ジョブ
   startOsuSnapshotScheduler(client);
+
+  // osu! リアルタイムスコア監視
+  startOsuRealtimeScoreMonitor(client);
 
   // 24時間VC接続（@discordjs/voice）
   const vcChannelId = process.env.VC_CHANNEL_ID;
