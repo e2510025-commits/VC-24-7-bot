@@ -18,6 +18,13 @@ const WINDOWS = [
   { key: '1month', label: '1month', ms: 30 * 24 * 60 * 60 * 1000 }
 ];
 
+const BASELINE_CHOICES = [
+  { name: '標準(24h/1week/1month)', value: 'multi' },
+  { name: '前日比', value: 'prev_day' },
+  { name: '前週同曜日比', value: 'prev_week_same_day' },
+  { name: '月初比', value: 'month_start' }
+];
+
 export const data = new SlashCommandBuilder()
   .setName('osu-growth')
   .setDescription('osu!の24h/1week/1month成長率を表示します')
@@ -37,6 +44,13 @@ export const data = new SlashCommandBuilder()
         { name: 'catch', value: 'fruits' },
         { name: 'taiko', value: 'taiko' }
       )
+      .setRequired(false)
+  )
+  .addStringOption(option =>
+    option
+      .setName('baseline')
+      .setDescription('比較基準')
+      .addChoices(...BASELINE_CHOICES)
       .setRequired(false)
   );
 
@@ -166,11 +180,37 @@ function buildWindowFieldValue(currentStats, snapshot) {
   ].join('\n');
 }
 
+function resolveBaseline(baselineKey, now) {
+  switch (baselineKey) {
+    case 'prev_day':
+      return {
+        label: '前日比',
+        beforeDate: new Date(now - 24 * 60 * 60 * 1000)
+      };
+    case 'prev_week_same_day':
+      return {
+        label: '前週同曜日比',
+        beforeDate: new Date(now - 7 * 24 * 60 * 60 * 1000)
+      };
+    case 'month_start': {
+      const date = new Date(now);
+      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+      return {
+        label: '月初比',
+        beforeDate: monthStart
+      };
+    }
+    default:
+      return null;
+  }
+}
+
 export async function execute(interaction) {
   await interaction.deferReply();
 
   try {
     const requestedMode = interaction.options.getString('mode') || 'osu';
+    const baseline = interaction.options.getString('baseline') || 'multi';
     const mode = normalizeOsuMode(requestedMode);
     const modeLabel = getModeLabel(mode);
     const targetUsername = await resolveTargetUsername(interaction);
@@ -190,18 +230,41 @@ export async function execute(interaction) {
     }
 
     const now = Date.now();
-    const windowSnapshots = await Promise.all(
-      WINDOWS.map(window =>
-        getClosestSnapshotBefore({
-          osuUserId: userId,
-          mode,
-          beforeDate: new Date(now - window.ms)
-        })
-      )
-    );
+    let windowSnapshots = [];
+    let baselineComparison = null;
+
+    if (baseline === 'multi') {
+      windowSnapshots = await Promise.all(
+        WINDOWS.map(window =>
+          getClosestSnapshotBefore({
+            osuUserId: userId,
+            mode,
+            beforeDate: new Date(now - window.ms)
+          })
+        )
+      );
+    } else {
+      const baselineInfo = resolveBaseline(baseline, now);
+      if (!baselineInfo) {
+        return interaction.editReply('❌ baseline の指定が不正です');
+      }
+
+      const snapshot = await getClosestSnapshotBefore({
+        osuUserId: userId,
+        mode,
+        beforeDate: baselineInfo.beforeDate
+      });
+
+      baselineComparison = {
+        label: baselineInfo.label,
+        value: buildWindowFieldValue(stats, snapshot)
+      };
+    }
 
     await saveOsuSnapshot({
+      discordId: interaction.user.id,
       osuUserId: userId,
+      osuUsername: user.username,
       mode,
       pp: stats.pp,
       globalRank: stats.global_rank,
@@ -217,18 +280,25 @@ export async function execute(interaction) {
       .setColor('#FF66AA')
       .setTitle(`${user.username} の成長率 [${modeLabel}]`)
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription('24h / 1week / 1month の前比を表示します（実行時に履歴を自動保存）')
-      .addFields(
-        {
-          name: '現在値',
-          value: [
-            `PP: ${formatNumber(stats.pp)}pp`,
-            `順位: ${currentRank}`,
-            `国別順位 (${user.country_code || 'N/A'}): ${currentCountryRank}`,
-            `プレイ時間: ${formatPlayTime(stats.play_time)}`,
-            `プレイ回数: ${formatNumber(stats.play_count)}`
-          ].join('\n')
-        },
+      .setDescription('前比を表示します（実行時に履歴を自動保存）')
+      .setFooter({ text: '初回実行直後は履歴不足になる場合があります。時間をおいて再実行してください。' })
+      .setTimestamp(new Date());
+
+    const fields = [
+      {
+        name: '現在値',
+        value: [
+          `PP: ${formatNumber(stats.pp)}pp`,
+          `順位: ${currentRank}`,
+          `国別順位 (${user.country_code || 'N/A'}): ${currentCountryRank}`,
+          `プレイ時間: ${formatPlayTime(stats.play_time)}`,
+          `プレイ回数: ${formatNumber(stats.play_count)}`
+        ].join('\n')
+      }
+    ];
+
+    if (baseline === 'multi') {
+      fields.push(
         {
           name: '24h',
           value: buildWindowFieldValue(stats, windowSnapshots[0]),
@@ -244,9 +314,16 @@ export async function execute(interaction) {
           value: buildWindowFieldValue(stats, windowSnapshots[2]),
           inline: false
         }
-      )
-      .setFooter({ text: '初回実行直後は履歴不足になる場合があります。時間をおいて再実行してください。' })
-      .setTimestamp(new Date());
+      );
+    } else if (baselineComparison) {
+      fields.push({
+        name: baselineComparison.label,
+        value: baselineComparison.value,
+        inline: false
+      });
+    }
+
+    embed.addFields(...fields);
 
     if (user.avatar_url) {
       embed.setThumbnail(user.avatar_url);

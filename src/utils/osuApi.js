@@ -3,9 +3,15 @@ import { log } from './logger.js';
 
 const OSU_BASE_URL = 'https://osu.ppy.sh';
 const TOKEN_ENDPOINT = `${OSU_BASE_URL}/oauth/token`;
+const OSU_API_CACHE_SECONDS = Math.max(0, Number(process.env.OSU_API_CACHE_SECONDS || 20));
+const OSU_API_MIN_INTERVAL_MS = Math.max(0, Number(process.env.OSU_API_MIN_INTERVAL_MS || 120));
+const OSU_API_MAX_RETRIES = Math.max(0, Number(process.env.OSU_API_MAX_RETRIES || 3));
 
 let accessToken = null;
 let accessTokenExpiresAt = 0;
+let requestChain = Promise.resolve();
+let lastApiRequestAt = 0;
+const responseCache = new Map();
 
 // osu.js is requested as a dependency, but v2 data fetching is done via official OAuth2 REST endpoints.
 if (typeof osu?.api !== 'function') {
@@ -91,6 +97,82 @@ function toOsuApiError(status, payload) {
   return new OsuApiError(`osu! API エラー (${status})${suffix}`, status, payload);
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function deepClone(value) {
+  if (typeof globalThis.structuredClone === 'function') {
+    return globalThis.structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
+function sortedQueryEntries(query) {
+  return Object.entries(query || {})
+    .filter(([, value]) => value !== undefined && value !== null)
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+function buildCacheKey(path, query) {
+  const serialized = sortedQueryEntries(query)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join('&');
+  return `${path}?${serialized}`;
+}
+
+function getCachedResponse(cacheKey) {
+  if (OSU_API_CACHE_SECONDS <= 0) {
+    return null;
+  }
+
+  const cached = responseCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    responseCache.delete(cacheKey);
+    return null;
+  }
+
+  return deepClone(cached.payload);
+}
+
+function setCachedResponse(cacheKey, payload) {
+  if (OSU_API_CACHE_SECONDS <= 0) {
+    return;
+  }
+
+  responseCache.set(cacheKey, {
+    payload: deepClone(payload),
+    expiresAt: Date.now() + OSU_API_CACHE_SECONDS * 1000
+  });
+}
+
+function shouldRetryStatus(status) {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+async function scheduleApiRequest(task) {
+  const run = requestChain.then(async () => {
+    const now = Date.now();
+    const waitMs = OSU_API_MIN_INTERVAL_MS - (now - lastApiRequestAt);
+    if (waitMs > 0) {
+      await sleep(waitMs);
+    }
+    lastApiRequestAt = Date.now();
+    return task();
+  });
+
+  requestChain = run.then(
+    () => undefined,
+    () => undefined
+  );
+
+  return run;
+}
+
 export async function getOsuAccessToken(forceRefresh = false) {
   const now = Date.now();
   if (!forceRefresh && accessToken && now < accessTokenExpiresAt - 60_000) {
@@ -131,39 +213,70 @@ export async function getOsuAccessToken(forceRefresh = false) {
   return accessToken;
 }
 
-async function osuGet(path, query = {}, canRetry = true) {
+async function osuGet(path, query = {}, options = {}) {
+  const canRetryAuth = options.canRetryAuth !== false;
+  const retryCount = Number(options.retryCount || 0);
+  const noCache = options.noCache === true;
+  const cacheKey = buildCacheKey(path, query);
+
+  if (!noCache) {
+    const cached = getCachedResponse(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
   const token = await getOsuAccessToken();
   const url = new URL(path, OSU_BASE_URL);
 
-  for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null) {
+  for (const [key, value] of sortedQueryEntries(query)) {
       url.searchParams.set(key, String(value));
-    }
   }
 
   let response;
 
   try {
-    response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json'
-      }
-    });
+    const request = () =>
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json'
+        }
+      });
+
+    response = await scheduleApiRequest(request);
   } catch (error) {
     throw new OsuApiError(`osu! API への接続に失敗しました: ${error.message}`, 503, error);
   }
 
   const payload = await safeJson(response);
 
-  if (response.status === 401 && canRetry) {
+  if (response.status === 401 && canRetryAuth) {
     await getOsuAccessToken(true);
-    return osuGet(path, query, false);
+    return osuGet(path, query, { ...options, canRetryAuth: false });
+  }
+
+  if (!response.ok && shouldRetryStatus(response.status) && retryCount < OSU_API_MAX_RETRIES) {
+    const retryAfterHeader = Number(response.headers.get('retry-after'));
+    const backoffMs = Number.isFinite(retryAfterHeader)
+      ? Math.max(500, retryAfterHeader * 1000)
+      : Math.min(5000, 500 * (retryCount + 1));
+    await sleep(backoffMs);
+    return osuGet(path, query, {
+      ...options,
+      retryCount: retryCount + 1,
+      canRetryAuth: false,
+      noCache: true
+    });
   }
 
   if (!response.ok) {
     throw toOsuApiError(response.status, payload);
+  }
+
+  if (!noCache) {
+    setCachedResponse(cacheKey, payload);
   }
 
   return payload;
@@ -259,7 +372,21 @@ export async function fetchRecentScores(userIdOrName, mode = 'osu', limit = 1) {
     mode: normalizedMode,
     include_fails: 1,
     limit
-  });
+  }, { noCache: true });
+}
+
+export async function fetchBestScores(userIdOrName, mode = 'osu', limit = 1) {
+  const target = String(userIdOrName || '').trim();
+  if (!target) {
+    throw new OsuApiError('osu! ユーザー名を指定してください', 400);
+  }
+
+  const normalizedMode = normalizeOsuMode(mode);
+
+  return osuGet(`/api/v2/users/${encodeURIComponent(target)}/scores/best`, {
+    mode: normalizedMode,
+    limit
+  }, { noCache: true });
 }
 
 export async function fetchBeatmap(beatmapId) {

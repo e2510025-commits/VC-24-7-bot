@@ -63,3 +63,36 @@ export async function getLinkedOsuUsername(discordId) {
 
   return data?.osu_username ?? null;
 }
+
+export async function listLinkedOsuUsers() {
+  const client = getSupabaseClient();
+  const pageSize = 1000;
+  let from = 0;
+  const rows = [];
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await client
+      .from('user_links')
+      .select('discord_id, osu_username')
+      .order('discord_id', { ascending: true })
+      .range(from, to);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      break;
+    }
+
+    rows.push(...data);
+    if (data.length < pageSize) {
+      break;
+    }
+
+    from += pageSize;
+  }
+
+  return rows;
+}

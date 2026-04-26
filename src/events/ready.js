@@ -1,5 +1,6 @@
 import { log } from '../utils/logger.js';
 import { VoiceConnectionStatus } from '@discordjs/voice';
+import { startOsuSnapshotScheduler } from '../services/osuSnapshotScheduler.js';
 
 export const name = 'ready';
 export const once = true;
@@ -15,6 +16,9 @@ export async function execute(client) {
   } catch (error) {
     log(`コマンド登録エラー: ${error.message}`, 'error');
   }
+
+  // osu! 成長データ収集ジョブ
+  startOsuSnapshotScheduler(client);
 
   // 24時間VC接続（@discordjs/voice）
   const vcChannelId = process.env.VC_CHANNEL_ID;

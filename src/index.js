@@ -20,6 +20,11 @@ import * as osuLinkCommand from './commands/osu-link.js';
 import * as osuProfileCommand from './commands/osu-profile.js';
 import * as osuRecentCommand from './commands/osu-recent.js';
 import * as osuGrowthCommand from './commands/osu-growth.js';
+import * as osuRankingCommand from './commands/osu-ranking.js';
+import * as osuGraphCommand from './commands/osu-graph.js';
+import * as osuGoalCommand from './commands/osu-goal.js';
+import * as osuAnalysisCommand from './commands/osu-analysis.js';
+import * as osuAdminCommand from './commands/osu-admin.js';
 
 config();
 
@@ -44,6 +49,11 @@ client.commands.set(osuLinkCommand.data.name, osuLinkCommand);
 client.commands.set(osuProfileCommand.data.name, osuProfileCommand);
 client.commands.set(osuRecentCommand.data.name, osuRecentCommand);
 client.commands.set(osuGrowthCommand.data.name, osuGrowthCommand);
+client.commands.set(osuRankingCommand.data.name, osuRankingCommand);
+client.commands.set(osuGraphCommand.data.name, osuGraphCommand);
+client.commands.set(osuGoalCommand.data.name, osuGoalCommand);
+client.commands.set(osuAnalysisCommand.data.name, osuAnalysisCommand);
+client.commands.set(osuAdminCommand.data.name, osuAdminCommand);
 
 // 音楽プレイヤー初期化
 client.musicPlayer = new MusicPlayer(client);
