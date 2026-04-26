@@ -143,6 +143,45 @@ export async function testConnection() {
       CREATE INDEX IF NOT EXISTS idx_osu_best_scores_discord_mode
       ON osu_best_scores (discord_id, mode)
     `);
+
+    // osu! ベスト更新イベント履歴（ヒートマップ用）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS osu_best_score_events (
+        id BIGSERIAL PRIMARY KEY,
+        discord_id VARCHAR(255),
+        osu_user_id BIGINT NOT NULL,
+        osu_username VARCHAR(255) NOT NULL,
+        mode VARCHAR(16) NOT NULL,
+        score_id BIGINT,
+        pp DOUBLE PRECISION,
+        recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_osu_best_score_events_lookup
+      ON osu_best_score_events (osu_user_id, mode, recorded_at DESC)
+    `);
+
+    // osu! Top Plays スナップショット（変化追跡用）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS osu_top_play_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        discord_id VARCHAR(255),
+        osu_user_id BIGINT NOT NULL,
+        osu_username VARCHAR(255),
+        mode VARCHAR(16) NOT NULL,
+        top_limit INTEGER NOT NULL,
+        score_ids_json TEXT NOT NULL,
+        top_pp_sum DOUBLE PRECISION,
+        captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_osu_top_play_snapshots_lookup
+      ON osu_top_play_snapshots (osu_user_id, mode, captured_at DESC)
+    `);
     
     client.release();
     log('PostgreSQL接続成功', 'success');

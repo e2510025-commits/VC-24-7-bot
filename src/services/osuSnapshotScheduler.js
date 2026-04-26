@@ -1,5 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import { getBestScoreRecord, upsertBestScoreRecord } from '../database/osuBestScores.js';
+import { insertBestScoreEvent } from '../database/osuBestScoreEvents.js';
 import { listGoalsExpiringSoon, markGoalReminderSent } from '../database/osuGoals.js';
 import { getGuildOsuSettings } from '../database/osuGuildSettings.js';
 import { listLinkedOsuUsers } from '../database/supabase.js';
@@ -731,6 +732,15 @@ async function runCycle(client) {
               });
 
               if (scoreChanged && ppIncreased) {
+                await insertBestScoreEvent({
+                  discordId: link.discord_id,
+                  osuUserId: user.id,
+                  osuUsername: user.username,
+                  mode,
+                  scoreId: bestScore.id,
+                  pp: bestScore.pp
+                });
+
                 const bestEmbed = buildBestPlayEmbed({
                   user,
                   mode,

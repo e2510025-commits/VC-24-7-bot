@@ -24,6 +24,10 @@ import * as osuRankingCommand from './commands/osu-ranking.js';
 import * as osuGraphCommand from './commands/osu-graph.js';
 import * as osuGoalCommand from './commands/osu-goal.js';
 import * as osuAnalysisCommand from './commands/osu-analysis.js';
+import * as osuDashboardCommand from './commands/osu-dashboard.js';
+import * as osuHeatmapCommand from './commands/osu-heatmap.js';
+import * as osuTopplaysCommand from './commands/osu-topplays.js';
+import * as osuLeagueCommand from './commands/osu-league.js';
 import * as osuAdminCommand from './commands/osu-admin.js';
 
 config();
@@ -53,6 +57,10 @@ client.commands.set(osuRankingCommand.data.name, osuRankingCommand);
 client.commands.set(osuGraphCommand.data.name, osuGraphCommand);
 client.commands.set(osuGoalCommand.data.name, osuGoalCommand);
 client.commands.set(osuAnalysisCommand.data.name, osuAnalysisCommand);
+client.commands.set(osuDashboardCommand.data.name, osuDashboardCommand);
+client.commands.set(osuHeatmapCommand.data.name, osuHeatmapCommand);
+client.commands.set(osuTopplaysCommand.data.name, osuTopplaysCommand);
+client.commands.set(osuLeagueCommand.data.name, osuLeagueCommand);
 client.commands.set(osuAdminCommand.data.name, osuAdminCommand);
 
 // 音楽プレイヤー初期化
