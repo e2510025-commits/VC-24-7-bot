@@ -14,6 +14,7 @@ import {
 import {
   fetchBestScores,
   fetchOsuUser,
+  fetchRecentScores,
   formatNumber,
   getModeLabel,
   normalizeOsuMode,
@@ -40,6 +41,12 @@ const PP_MILESTONES = [
 const RANK_MILESTONES = [
   100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 100
 ];
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAILY_HISTORY_DESCRIPTION_LIMIT = 3600;
+const DEFAULT_DAILY_HISTORY_TZ_OFFSET = 9;
+const DAILY_HISTORY_DEFAULT_RECENT_LIMIT = 100;
+const dailyHistorySentDateKeys = new Set();
+let hasRunDailyHistoryBootstrap = false;
 
 function parseModes() {
   const raw = process.env.OSU_SNAPSHOT_MODES || 'osu';
@@ -57,6 +64,108 @@ function parseMinutes() {
     return 60;
   }
   return Math.trunc(numeric);
+}
+
+function parseDailyHistoryTimezoneOffsetHours() {
+  const numeric = Number(
+    process.env.OSU_DAILY_HISTORY_TZ_OFFSET_HOURS || DEFAULT_DAILY_HISTORY_TZ_OFFSET
+  );
+  if (!Number.isFinite(numeric)) {
+    return DEFAULT_DAILY_HISTORY_TZ_OFFSET;
+  }
+
+  return Math.max(-12, Math.min(14, Math.trunc(numeric)));
+}
+
+function parseDailyHistoryRecentLimit() {
+  const numeric = Number(process.env.OSU_DAILY_HISTORY_RECENT_LIMIT || DAILY_HISTORY_DEFAULT_RECENT_LIMIT);
+  if (!Number.isFinite(numeric)) {
+    return DAILY_HISTORY_DEFAULT_RECENT_LIMIT;
+  }
+
+  return Math.max(20, Math.min(100, Math.trunc(numeric)));
+}
+
+function formatDateKeyWithOffset(timestampMs, offsetHours) {
+  const shifted = new Date(timestampMs + offsetHours * 60 * 60 * 1000);
+  if (!Number.isFinite(shifted.getTime())) {
+    return null;
+  }
+
+  const year = shifted.getUTCFullYear();
+  const month = `${shifted.getUTCMonth() + 1}`.padStart(2, '0');
+  const day = `${shifted.getUTCDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function startOfDayWithOffsetMs(timestampMs, offsetHours) {
+  const shifted = new Date(timestampMs + offsetHours * 60 * 60 * 1000);
+  if (!Number.isFinite(shifted.getTime())) {
+    return null;
+  }
+
+  const dayStartShifted = Date.UTC(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth(),
+    shifted.getUTCDate()
+  );
+
+  return dayStartShifted - offsetHours * 60 * 60 * 1000;
+}
+
+function isInDailyMidnightWindow(timestampMs, tickMinutes, offsetHours) {
+  const shifted = new Date(timestampMs + offsetHours * 60 * 60 * 1000);
+  if (!Number.isFinite(shifted.getTime())) {
+    return false;
+  }
+
+  const minutesAfterMidnight = shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+  return minutesAfterMidnight >= 0 && minutesAfterMidnight < tickMinutes;
+}
+
+function resolveDailyHistoryWindow({ nowMs, tickMinutes, offsetHours, bootstrap }) {
+  if (bootstrap) {
+    const startMs = startOfDayWithOffsetMs(nowMs, offsetHours);
+    if (startMs === null) {
+      return null;
+    }
+
+    const dateKey = formatDateKeyWithOffset(nowMs, offsetHours);
+    if (!dateKey) {
+      return null;
+    }
+
+    return {
+      type: 'bootstrap',
+      dateKey,
+      startMs,
+      endMs: nowMs,
+      label: `${dateKey} (途中経過)`
+    };
+  }
+
+  if (!isInDailyMidnightWindow(nowMs, tickMinutes, offsetHours)) {
+    return null;
+  }
+
+  const endMs = startOfDayWithOffsetMs(nowMs, offsetHours);
+  if (endMs === null) {
+    return null;
+  }
+
+  const startMs = endMs - DAY_MS;
+  const dateKey = formatDateKeyWithOffset(endMs - 1, offsetHours);
+  if (!dateKey) {
+    return null;
+  }
+
+  return {
+    type: 'daily',
+    dateKey,
+    startMs,
+    endMs,
+    label: dateKey
+  };
 }
 
 function toFiniteNumber(value) {
@@ -188,6 +297,96 @@ function formatCombo(comboValue) {
     return 'N/A';
   }
   return `${formatNumber(Math.trunc(value))}x`;
+}
+
+function normalizeDailyPlayTitle(score) {
+  const beatmap = score?.beatmap || {};
+  const beatmapset = score?.beatmapset || {};
+  const artist = String(beatmapset.artist || 'Unknown Artist').trim();
+  const title = String(beatmapset.title || 'Unknown Title').trim();
+  const diff = String(beatmap.version || 'Unknown Diff').trim();
+  return `${artist} - ${title} [${diff}]`;
+}
+
+function truncateText(text, maxLength = 72) {
+  const value = String(text || '').trim();
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function buildDailyPlayLine(entry, index, options = {}) {
+  const includeUser = options.includeUser !== false;
+  const pp = toFiniteNumber(entry.pp);
+  const ppText = pp === null ? 'N/A' : `${pp.toFixed(2)}pp`;
+  const title = truncateText(entry.title, 72);
+  const userText = entry.osuUsername || `osu#${entry.osuUserId}`;
+  const scoreLink = entry.scoreUrl ? `[${title}](${entry.scoreUrl})` : title;
+
+  if (includeUser) {
+    return `${index + 1}. ${ppText} | ${userText} | ${scoreLink} | ${toDiscordTimestamp(entry.playedAt)}`;
+  }
+
+  return `${index + 1}. ${ppText} | ${scoreLink} | ${toDiscordTimestamp(entry.playedAt)}`;
+}
+
+function sortDailyEntriesByPp(entries) {
+  return [...entries].sort((a, b) => {
+    const aPp = toFiniteNumber(a.pp);
+    const bPp = toFiniteNumber(b.pp);
+    if (aPp === null && bPp === null) {
+      return b.playedMs - a.playedMs;
+    }
+    if (aPp === null) {
+      return 1;
+    }
+    if (bPp === null) {
+      return -1;
+    }
+    return bPp - aPp;
+  });
+}
+
+function buildDailySummaryLines(summary) {
+  if (!summary) {
+    return [
+      '今日のプレイ時間: N/A',
+      '今日の増加順位: N/A',
+      '今日の増加PP: N/A'
+    ];
+  }
+
+  return [
+    `今日のプレイ時間: ${formatMetricDelta('play_time', summary.playTimeDelta)}`,
+    `今日の増加順位: ${formatMetricDelta('rank_improvement', summary.rankDelta)}`,
+    `今日の増加PP: ${formatMetricDelta('pp', summary.ppDelta)}`
+  ];
+}
+
+function splitLinesToPages(lines, limit = DAILY_HISTORY_DESCRIPTION_LIMIT) {
+  const pages = [];
+  let current = [];
+  let currentLength = 0;
+
+  for (const line of lines) {
+    const nextLength = currentLength + line.length + 1;
+    if (current.length > 0 && nextLength > limit) {
+      pages.push(current);
+      current = [line];
+      currentLength = line.length + 1;
+      continue;
+    }
+
+    current.push(line);
+    currentLength = nextLength;
+  }
+
+  if (current.length > 0) {
+    pages.push(current);
+  }
+
+  return pages;
 }
 
 function analyzeBestScoreUpdate({ ppDelta, accuracyDelta, missDelta, comboDelta }) {
@@ -647,6 +846,299 @@ async function sendGoalReminders(client) {
   return sentCount;
 }
 
+async function collectDailyPlayHistoryEntries({ trackedUsers, modes, startMs, endMs, recentLimit }) {
+  const entriesByMode = new Map(modes.map(mode => [mode, []]));
+
+  for (const trackedUser of trackedUsers) {
+    const discordId = String(trackedUser.discord_id || '').trim();
+    const username = String(trackedUser.osu_username || '').trim();
+    const trackedOsuUserId = toFiniteNumber(trackedUser.osu_user_id);
+
+    if (!discordId || (!username && trackedOsuUserId === null)) {
+      continue;
+    }
+
+    const lookupTarget = trackedOsuUserId !== null ? trackedOsuUserId : username;
+
+    for (const mode of modes) {
+      try {
+        const scores = await fetchRecentScores(lookupTarget, mode, recentLimit);
+        for (const score of scores || []) {
+          const playedAt = score?.ended_at || score?.created_at;
+          const playedMs = new Date(playedAt).getTime();
+          if (!Number.isFinite(playedMs)) {
+            continue;
+          }
+
+          if (playedMs < startMs || playedMs >= endMs) {
+            continue;
+          }
+
+          const scoreId = toFiniteNumber(score?.id);
+          const scoreMode = normalizeOsuMode(score?.mode || mode);
+          const scoreUrl =
+            scoreId === null
+              ? null
+              : `https://osu.ppy.sh/scores/${scoreMode}/${Math.trunc(scoreId)}`;
+
+          entriesByMode.get(mode).push({
+            discordId,
+            osuUserId: trackedOsuUserId,
+            osuUsername: String(score?.user?.username || username || '').trim(),
+            mode,
+            pp: score?.pp,
+            playedAt,
+            playedMs,
+            title: normalizeDailyPlayTitle(score),
+            scoreUrl
+          });
+        }
+      } catch (error) {
+        log(`日次プレイ履歴取得失敗: ${username || trackedOsuUserId} [${mode}] - ${error.message}`, 'error');
+      }
+    }
+  }
+
+  return entriesByMode;
+}
+
+async function isGuildMember(guild, discordId, cache) {
+  const key = `${guild.id}:${discordId}`;
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
+
+  let isMember = guild.members.cache.has(discordId);
+  if (!isMember) {
+    try {
+      await guild.members.fetch({ user: discordId, force: false });
+      isMember = true;
+    } catch {
+      isMember = false;
+    }
+  }
+
+  cache.set(key, isMember);
+  return isMember;
+}
+
+function resolveDailyHistoryChannelId(settings) {
+  return (
+    settings.daily_history_channel_id ||
+    settings.report_channel_id ||
+    settings.realtime_score_channel_id ||
+    settings.alert_channel_id ||
+    null
+  );
+}
+
+async function buildDailyUserModeSummary({ osuUserId, mode, startMs, endMs }) {
+  const userId = toFiniteNumber(osuUserId);
+  if (userId === null) {
+    return null;
+  }
+
+  const baseline = await getClosestSnapshotBefore({
+    osuUserId: userId,
+    mode,
+    beforeDate: new Date(startMs)
+  });
+  const latest = await getClosestSnapshotBefore({
+    osuUserId: userId,
+    mode,
+    beforeDate: new Date(endMs)
+  });
+
+  if (!latest) {
+    return null;
+  }
+
+  return {
+    playTimeDelta: computeGrowthDelta('play_time', baseline?.play_time_seconds, latest.play_time_seconds),
+    rankDelta: computeGrowthDelta('rank_improvement', baseline?.global_rank, latest.global_rank),
+    ppDelta: computeGrowthDelta('pp', baseline?.pp, latest.pp)
+  };
+}
+
+async function sendDailyPlayHistoryDmReports({
+  client,
+  trackedUsers,
+  entriesByMode,
+  modes,
+  label,
+  reportType,
+  startMs,
+  endMs
+}) {
+  const dmTargets = trackedUsers.filter(user => Boolean(user.daily_dm_history_enabled));
+  if (dmTargets.length === 0) {
+    return 0;
+  }
+
+  let sentCount = 0;
+
+  for (const target of dmTargets) {
+    const discordId = String(target.discord_id || '').trim();
+    if (!discordId) {
+      continue;
+    }
+
+    const dmUser = await client.users.fetch(discordId).catch(() => null);
+    if (!dmUser) {
+      continue;
+    }
+
+    for (const mode of modes) {
+      const ownEntries = (entriesByMode.get(mode) || []).filter(entry => entry.discordId === discordId);
+      const sortedEntries = sortDailyEntriesByPp(ownEntries);
+      const summary = await buildDailyUserModeSummary({
+        osuUserId: target.osu_user_id,
+        mode,
+        startMs,
+        endMs
+      });
+
+      const summaryLines = buildDailySummaryLines(summary);
+
+      if (sortedEntries.length === 0) {
+        const noDataEmbed = new EmbedBuilder()
+          .setColor('#95A5A6')
+          .setTitle(`あなたの日次プレイ履歴 [${getModeLabel(mode)}]`)
+          .setDescription(
+            [
+              reportType === 'bootstrap'
+                ? `${label} のプレイ履歴（途中集計）`
+                : `${label} のプレイ履歴`,
+              ...summaryLines,
+              '',
+              '対象プレイはありませんでした。'
+            ].join('\n')
+          )
+          .setTimestamp(new Date());
+
+        await dmUser.send({ embeds: [noDataEmbed] }).catch(() => null);
+        sentCount += 1;
+        continue;
+      }
+
+      const lines = sortedEntries.map((entry, index) =>
+        buildDailyPlayLine(entry, index, { includeUser: false })
+      );
+      const pages = splitLinesToPages(lines);
+
+      for (let index = 0; index < pages.length; index += 1) {
+        const embed = new EmbedBuilder()
+          .setColor('#2ECC71')
+          .setTitle(`あなたの日次プレイ履歴 [${getModeLabel(mode)}]`)
+          .setDescription(
+            [
+              reportType === 'bootstrap'
+                ? `${label} のプレイ履歴（途中集計）`
+                : `${label} のプレイ履歴`,
+              ...summaryLines,
+              `対象: ${formatNumber(sortedEntries.length)}件 / PP降順`,
+              `ページ: ${index + 1}/${pages.length}`,
+              '',
+              pages[index].join('\n')
+            ].join('\n')
+          )
+          .setTimestamp(new Date());
+
+        await dmUser.send({ embeds: [embed] }).catch(() => null);
+        sentCount += 1;
+      }
+    }
+  }
+
+  return sentCount;
+}
+
+async function sendDailyPlayHistoryReports({
+  client,
+  guildSettingsMap,
+  entriesByMode,
+  modes,
+  label,
+  reportType
+}) {
+  const memberCache = new Map();
+  let sentCount = 0;
+
+  for (const [guildId, settings] of guildSettingsMap.entries()) {
+    const channelId = resolveDailyHistoryChannelId(settings);
+    if (!channelId) {
+      continue;
+    }
+
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) {
+      continue;
+    }
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel?.isTextBased()) {
+      continue;
+    }
+
+    for (const mode of modes) {
+      const allEntries = entriesByMode.get(mode) || [];
+      const guildEntries = [];
+
+      for (const entry of allEntries) {
+        const member = await isGuildMember(guild, entry.discordId, memberCache);
+        if (member) {
+          guildEntries.push(entry);
+        }
+      }
+
+      const sortedGuildEntries = sortDailyEntriesByPp(guildEntries);
+
+      if (sortedGuildEntries.length === 0) {
+        const noDataEmbed = new EmbedBuilder()
+          .setColor('#95A5A6')
+          .setTitle(`日次プレイ履歴 [${getModeLabel(mode)}]`)
+          .setDescription(
+            reportType === 'bootstrap'
+              ? `${label} のプレイ履歴（途中集計）\n対象プレイはありませんでした。`
+              : `${label} のプレイ履歴\n対象プレイはありませんでした。`
+          )
+          .setTimestamp(new Date());
+
+        await channel.send({ embeds: [noDataEmbed] }).catch(() => null);
+        sentCount += 1;
+        continue;
+      }
+
+      const lines = sortedGuildEntries.map((entry, index) => buildDailyPlayLine(entry, index));
+      const pages = splitLinesToPages(lines);
+
+      for (let index = 0; index < pages.length; index += 1) {
+        const page = pages[index];
+        const embed = new EmbedBuilder()
+          .setColor('#1ABC9C')
+          .setTitle(`日次プレイ履歴 [${getModeLabel(mode)}]`)
+          .setDescription(
+            [
+              reportType === 'bootstrap'
+                ? `${label} のプレイ履歴（途中集計）`
+                : `${label} のプレイ履歴`,
+              `対象: ${formatNumber(sortedGuildEntries.length)}件 / PP降順`,
+              `ページ: ${index + 1}/${pages.length}`,
+              '',
+              page.join('\n')
+            ].join('\n')
+          )
+          .setTimestamp(new Date());
+
+        await channel.send({ embeds: [embed] }).catch(() => null);
+        sentCount += 1;
+      }
+    }
+  }
+
+  return sentCount;
+}
+
 async function runCycle(client) {
   if (isRunning) {
     log('osu! スナップショット収集をスキップ（前回処理が継続中）', 'info');
@@ -823,7 +1315,66 @@ async function runCycle(client) {
     }
 
     const reportMode = getModeForReports(modes);
-  await sendWeeklyReports(client, guildSettingsMap, trackedUsers, reportMode);
+    await sendWeeklyReports(client, guildSettingsMap, trackedUsers, reportMode);
+
+    const tickMinutes = 10;
+    const nowMsForDaily = Date.now();
+    const dailyOffsetHours = parseDailyHistoryTimezoneOffsetHours();
+    const dailyWindow = resolveDailyHistoryWindow({
+      nowMs: nowMsForDaily,
+      tickMinutes,
+      offsetHours: dailyOffsetHours,
+      bootstrap: !hasRunDailyHistoryBootstrap
+    });
+
+    if (dailyWindow) {
+      const shouldSkipByKey =
+        dailyWindow.type === 'daily' && dailyHistorySentDateKeys.has(dailyWindow.dateKey);
+
+      if (!shouldSkipByKey) {
+        const recentLimit = parseDailyHistoryRecentLimit();
+        const entriesByMode = await collectDailyPlayHistoryEntries({
+          trackedUsers,
+          modes,
+          startMs: dailyWindow.startMs,
+          endMs: dailyWindow.endMs,
+          recentLimit
+        });
+
+        const dailySent = await sendDailyPlayHistoryReports({
+          client,
+          guildSettingsMap,
+          entriesByMode,
+          modes,
+          label: dailyWindow.label,
+          reportType: dailyWindow.type
+        });
+        const dailyDmSent = await sendDailyPlayHistoryDmReports({
+          client,
+          trackedUsers,
+          entriesByMode,
+          modes,
+          label: dailyWindow.label,
+          reportType: dailyWindow.type,
+          startMs: dailyWindow.startMs,
+          endMs: dailyWindow.endMs
+        });
+
+        if (dailyWindow.type === 'daily') {
+          dailyHistorySentDateKeys.add(dailyWindow.dateKey);
+        }
+
+        log(
+          `日次プレイ履歴送信: ${dailyWindow.label} / 種別 ${dailyWindow.type} / ギルド送信 ${dailySent}件 / DM送信 ${dailyDmSent}件`,
+          'success'
+        );
+      }
+
+      if (dailyWindow.type === 'bootstrap') {
+        hasRunDailyHistoryBootstrap = true;
+      }
+    }
+
     const reminderCount = await sendGoalReminders(client);
 
     log(

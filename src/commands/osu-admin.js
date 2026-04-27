@@ -67,7 +67,8 @@ export const data = new SlashCommandBuilder()
           .addChoices(
             { name: '成長アラート', value: 'alert' },
             { name: '週次レポート', value: 'report' },
-            { name: 'リアルタイムスコア', value: 'realtime-score' }
+            { name: 'リアルタイムスコア', value: 'realtime-score' },
+            { name: '日次プレイ履歴', value: 'daily-history' }
           )
           .setRequired(true)
       )
@@ -176,7 +177,7 @@ export async function execute(interaction) {
         .addFields(
           {
             name: '通知チャンネル',
-            value: `成長アラート: ${channelLabel(settings.alert_channel_id)}\n週次レポート: ${channelLabel(settings.report_channel_id)}\nリアルタイムスコア: ${channelLabel(settings.realtime_score_channel_id)}`,
+            value: `成長アラート: ${channelLabel(settings.alert_channel_id)}\n週次レポート: ${channelLabel(settings.report_channel_id)}\nリアルタイムスコア: ${channelLabel(settings.realtime_score_channel_id)}\n日次プレイ履歴: ${channelLabel(settings.daily_history_channel_id)}`,
             inline: false
           },
           {
@@ -225,6 +226,9 @@ export async function execute(interaction) {
       } else if (type === 'realtime-score') {
         patch = { realtime_score_channel_id: channel.id };
         typeName = 'リアルタイムスコア';
+      } else if (type === 'daily-history') {
+        patch = { daily_history_channel_id: channel.id };
+        typeName = '日次プレイ履歴';
       } else {
         return interaction.editReply('❌ 不明なチャンネルタイプです');
       }

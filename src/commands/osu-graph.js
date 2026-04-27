@@ -178,7 +178,9 @@ function buildChartUrlWithLimit(config) {
       return {
         url,
         originalLabels,
-        sampledLabels
+        sampledLabels,
+        config: sampledConfig,
+        usedShortUrl: false
       };
     }
 
@@ -186,7 +188,9 @@ function buildChartUrlWithLimit(config) {
       return {
         url: null,
         originalLabels,
-        sampledLabels
+        sampledLabels,
+        config: sampledConfig,
+        usedShortUrl: false
       };
     }
 
@@ -195,13 +199,61 @@ function buildChartUrlWithLimit(config) {
       return {
         url: null,
         originalLabels,
-        sampledLabels
+        sampledLabels,
+        config: sampledConfig,
+        usedShortUrl: false
       };
     }
 
     targetPoints = nextTarget;
     sampledConfig = downsampleChartConfig(config, targetPoints);
   }
+}
+
+async function createQuickChartShortUrl(config) {
+  try {
+    const response = await fetch('https://quickchart.io/chart/create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        chart: config
+      })
+    });
+
+    if (!response.ok) {
+      log(`QuickChart短縮URL生成失敗: status=${response.status}`, 'error');
+      return null;
+    }
+
+    const payload = await response.json().catch(() => null);
+    const url = typeof payload?.url === 'string' ? payload.url.trim() : '';
+    return url || null;
+  } catch (error) {
+    log(`QuickChart短縮URL生成失敗: ${error.message}`, 'error');
+    return null;
+  }
+}
+
+async function buildChartUrlWithFallback(config) {
+  const chartMeta = buildChartUrlWithLimit(config);
+  if (chartMeta.url) {
+    return chartMeta;
+  }
+
+  const fallbackConfig = chartMeta.config || config;
+  const shortUrl = await createQuickChartShortUrl(fallbackConfig);
+  if (!shortUrl) {
+    return chartMeta;
+  }
+
+  return {
+    ...chartMeta,
+    url: shortUrl,
+    usedShortUrl: true
+  };
 }
 
 function buildSamplingNote({ originalLabels, sampledLabels }) {
@@ -214,6 +266,10 @@ function buildSamplingNote({ originalLabels, sampledLabels }) {
   }
 
   return `\nデータ点が多いため ${formatNumber(originalLabels)}点 -> ${formatNumber(sampledLabels)}点 に間引いて表示しています`;
+}
+
+function buildChartDeliveryNote(chartMeta) {
+  return chartMeta?.usedShortUrl ? '\n画像送信安定化のため短縮URL経由で配信しています' : '';
 }
 
 function startOfUtcDay(dateLike) {
@@ -1179,16 +1235,17 @@ export async function execute(interaction) {
       }
 
       const chartConfig = buildCompareUsersChartConfig({ userDatasets, metric });
-      const chartMeta = buildChartUrlWithLimit(chartConfig);
+      const chartMeta = await buildChartUrlWithFallback(chartConfig);
       if (!chartMeta.url) {
         return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
       }
       const samplingNote = buildSamplingNote(chartMeta);
+      const deliveryNote = buildChartDeliveryNote(chartMeta);
 
       const embed = new EmbedBuilder()
         .setColor('#6C5CE7')
         .setTitle(`複数人比較: ${metricLabel(metric)} [${getModeLabel(mode)}]`)
-        .setDescription(`期間: ${period.label}\n比較人数: ${userDatasets.length}人${samplingNote}`)
+        .setDescription(`期間: ${period.label}\n比較人数: ${userDatasets.length}人${samplingNote}${deliveryNote}`)
         .addFields(
           userDatasets.map((data, index) => ({
             name: `${index + 1}. ${data.username}`,
@@ -1252,7 +1309,7 @@ export async function execute(interaction) {
       }
 
       const scatter = buildBestPpScatterChartConfig(points);
-      const chartMeta = buildChartUrlWithLimit(scatter.config);
+      const chartMeta = await buildChartUrlWithFallback(scatter.config);
       if (!chartMeta.url) {
         return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
       }
@@ -1265,12 +1322,13 @@ export async function execute(interaction) {
         ? '\n指定期間データが少ないため、Topスコア全体で描画しています'
         : '';
       const samplingNote = buildSamplingNote(chartMeta);
+      const deliveryNote = buildChartDeliveryNote(chartMeta);
 
       const embed = new EmbedBuilder()
         .setColor('#7F8CFF')
         .setTitle(`${user.username} のBest PP散布図 [${getModeLabel(mode)}]`)
         .setURL(`https://osu.ppy.sh/users/${user.id}`)
-        .setDescription(`${period.label} / Top${BEST_SCATTER_LIMIT}由来の散布図${fallbackNote}${samplingNote}`)
+        .setDescription(`${period.label} / Top${BEST_SCATTER_LIMIT}由来の散布図${fallbackNote}${samplingNote}${deliveryNote}`)
         .addFields(
           {
             name: '統計',
@@ -1362,7 +1420,7 @@ export async function execute(interaction) {
           forecastPpValues,
           forecastRankValues
         });
-        chartMeta = buildChartUrlWithLimit(config);
+        chartMeta = await buildChartUrlWithFallback(config);
 
         const ppSlope = calcPerDayTrend(series, 'pp');
         const rankSlope = calcPerDayTrend(series, 'rank');
@@ -1373,7 +1431,7 @@ export async function execute(interaction) {
         ].join('\n');
       } else {
         const chartConfig = buildPpRankDualChartConfig({ labels, ppValues, rankValues });
-        chartMeta = buildChartUrlWithLimit(chartConfig);
+        chartMeta = await buildChartUrlWithFallback(chartConfig);
       }
 
       if (!chartMeta?.url) {
@@ -1381,6 +1439,7 @@ export async function execute(interaction) {
       }
 
       const samplingNote = buildSamplingNote(chartMeta);
+      const deliveryNote = buildChartDeliveryNote(chartMeta);
 
       const rankHistoryNote =
         rankHistoryPoints.length > 0
@@ -1397,8 +1456,8 @@ export async function execute(interaction) {
         .setURL(`https://osu.ppy.sh/users/${user.id}`)
         .setDescription(
           chartType === 'pp_rank_forecast'
-            ? `${period.label} / 予測グラフ${rankHistoryNote}${samplingNote}`
-            : `${period.label} / 二軸グラフ${rankHistoryNote}${samplingNote}`
+            ? `${period.label} / 予測グラフ${rankHistoryNote}${samplingNote}${deliveryNote}`
+            : `${period.label} / 二軸グラフ${rankHistoryNote}${samplingNote}${deliveryNote}`
         )
         .addFields(
           {
@@ -1454,7 +1513,7 @@ export async function execute(interaction) {
     }
 
     const chartConfig = buildChartConfig({ labels, values, metric });
-    const chartMeta = buildChartUrlWithLimit(chartConfig);
+    const chartMeta = await buildChartUrlWithFallback(chartConfig);
     if (!chartMeta.url) {
       return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
     }
@@ -1468,12 +1527,13 @@ export async function execute(interaction) {
         ? '\n順位は osu! 公開履歴で連携前データを補完しています'
         : '';
     const samplingNote = buildSamplingNote(chartMeta);
+    const deliveryNote = buildChartDeliveryNote(chartMeta);
 
     const embed = new EmbedBuilder()
       .setColor('#00A8FF')
       .setTitle(`${user.username} の推移グラフ [${getModeLabel(mode)}]`)
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription(`${period.label} / 指標: ${metricLabel(metric)}${dataSourceNote}${samplingNote}`)
+      .setDescription(`${period.label} / 指標: ${metricLabel(metric)}${dataSourceNote}${samplingNote}${deliveryNote}`)
       .addFields(
         {
           name: '現在値',

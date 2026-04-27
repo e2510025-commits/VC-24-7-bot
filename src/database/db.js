@@ -49,6 +49,7 @@ export async function testConnection() {
     `);
 
     await client.query('ALTER TABLE osu_tracked_users ADD COLUMN IF NOT EXISTS osu_user_id BIGINT');
+    await client.query('ALTER TABLE osu_tracked_users ADD COLUMN IF NOT EXISTS daily_dm_history_enabled BOOLEAN NOT NULL DEFAULT FALSE');
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_osu_tracked_users_lookup
@@ -120,6 +121,7 @@ export async function testConnection() {
         alert_channel_id VARCHAR(255),
         report_channel_id VARCHAR(255),
         realtime_score_channel_id VARCHAR(255),
+        daily_history_channel_id VARCHAR(255),
         alert_pp_threshold DOUBLE PRECISION NOT NULL DEFAULT 10,
         alert_rank_threshold INTEGER NOT NULL DEFAULT 500,
         snapshot_interval_minutes INTEGER NOT NULL DEFAULT 60,
@@ -134,6 +136,7 @@ export async function testConnection() {
 
     // 既存テーブルへのカラム追加（後方互換性）
     await client.query('ALTER TABLE osu_guild_settings ADD COLUMN IF NOT EXISTS realtime_score_channel_id VARCHAR(255)');
+    await client.query('ALTER TABLE osu_guild_settings ADD COLUMN IF NOT EXISTS daily_history_channel_id VARCHAR(255)');
 
     // osu! ベストプレイ追跡
     await client.query(`

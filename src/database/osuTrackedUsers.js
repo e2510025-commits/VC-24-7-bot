@@ -35,6 +35,7 @@ export async function upsertTrackedOsuUser({ discordId, osuUserId = null, osuUse
       discord_id,
       osu_user_id,
       osu_username,
+      daily_dm_history_enabled,
       first_linked_at,
       last_linked_at`,
     [normalizedDiscordId, toNullableInteger(osuUserId), normalizedUsername]
@@ -49,6 +50,7 @@ export async function listTrackedOsuUsers() {
       discord_id,
       osu_user_id,
       osu_username,
+      daily_dm_history_enabled,
       first_linked_at,
       last_linked_at
     FROM osu_tracked_users
@@ -56,4 +58,51 @@ export async function listTrackedOsuUsers() {
   );
 
   return result.rows;
+}
+
+export async function getTrackedOsuUser(discordId) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) {
+    throw new Error('discordId must be provided');
+  }
+
+  const result = await pool.query(
+    `SELECT
+      discord_id,
+      osu_user_id,
+      osu_username,
+      daily_dm_history_enabled,
+      first_linked_at,
+      last_linked_at
+    FROM osu_tracked_users
+    WHERE discord_id = $1`,
+    [normalizedDiscordId]
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function setTrackedUserDailyDmHistoryEnabled(discordId, enabled) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) {
+    throw new Error('discordId must be provided');
+  }
+
+  const result = await pool.query(
+    `UPDATE osu_tracked_users
+    SET
+      daily_dm_history_enabled = $2,
+      last_linked_at = NOW()
+    WHERE discord_id = $1
+    RETURNING
+      discord_id,
+      osu_user_id,
+      osu_username,
+      daily_dm_history_enabled,
+      first_linked_at,
+      last_linked_at`,
+    [normalizedDiscordId, Boolean(enabled)]
+  );
+
+  return result.rows[0] || null;
 }
