@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from 'discord.js';
 import { getLinkedOsuUsername } from '../database/supabase.js';
 import { getSnapshotsSince, saveOsuSnapshot } from '../database/osuSnapshots.js';
 import {
@@ -256,6 +256,68 @@ async function buildChartUrlWithFallback(config) {
   };
 }
 
+async function createQuickChartImageAttachment(config, fileName = 'osu-graph.png') {
+  try {
+    const response = await fetch('https://quickchart.io/chart', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'image/png'
+      },
+      body: JSON.stringify({
+        chart: config,
+        width: 1400,
+        height: 800,
+        devicePixelRatio: 2,
+        format: 'png'
+      })
+    });
+
+    if (!response.ok) {
+      log(`QuickChart画像生成失敗: status=${response.status}`, 'error');
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+      return null;
+    }
+
+    return new AttachmentBuilder(Buffer.from(arrayBuffer), {
+      name: fileName
+    });
+  } catch (error) {
+    log(`QuickChart画像生成失敗: ${error.message}`, 'error');
+    return null;
+  }
+}
+
+async function buildChartRenderResult(config, fileName) {
+  const chartMeta = await buildChartUrlWithFallback(config);
+  const renderConfig = chartMeta.config || config;
+  const attachment = await createQuickChartImageAttachment(renderConfig, fileName);
+
+  if (attachment) {
+    return {
+      chartMeta: {
+        ...chartMeta,
+        usedAttachment: true
+      },
+      imageUrl: `attachment://${fileName}`,
+      files: [attachment]
+    };
+  }
+
+  return {
+    chartMeta: {
+      ...chartMeta,
+      usedAttachment: false
+    },
+    imageUrl: chartMeta.url,
+    files: []
+  };
+}
+
 function buildSamplingNote({ originalLabels, sampledLabels }) {
   if (!Number.isInteger(originalLabels) || !Number.isInteger(sampledLabels)) {
     return '';
@@ -269,6 +331,10 @@ function buildSamplingNote({ originalLabels, sampledLabels }) {
 }
 
 function buildChartDeliveryNote(chartMeta) {
+  if (chartMeta?.usedAttachment) {
+    return '\n画像を直接添付して配信しています';
+  }
+
   return chartMeta?.usedShortUrl ? '\n画像送信安定化のため短縮URL経由で配信しています' : '';
 }
 
@@ -1235,12 +1301,12 @@ export async function execute(interaction) {
       }
 
       const chartConfig = buildCompareUsersChartConfig({ userDatasets, metric });
-      const chartMeta = await buildChartUrlWithFallback(chartConfig);
-      if (!chartMeta.url) {
+      const renderResult = await buildChartRenderResult(chartConfig, 'osu-graph-compare.png');
+      if (!renderResult.imageUrl) {
         return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
       }
-      const samplingNote = buildSamplingNote(chartMeta);
-      const deliveryNote = buildChartDeliveryNote(chartMeta);
+      const samplingNote = buildSamplingNote(renderResult.chartMeta);
+      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
 
       const embed = new EmbedBuilder()
         .setColor('#6C5CE7')
@@ -1253,10 +1319,10 @@ export async function execute(interaction) {
             inline: true
           }))
         )
-        .setImage(chartMeta.url)
+        .setImage(renderResult.imageUrl)
         .setTimestamp(new Date());
 
-      return interaction.editReply({ embeds: [embed] });
+      return interaction.editReply({ embeds: [embed], files: renderResult.files });
     }
 
     // 単一ユーザーモード（既存の処理）
@@ -1309,8 +1375,8 @@ export async function execute(interaction) {
       }
 
       const scatter = buildBestPpScatterChartConfig(points);
-      const chartMeta = await buildChartUrlWithFallback(scatter.config);
-      if (!chartMeta.url) {
+      const renderResult = await buildChartRenderResult(scatter.config, 'osu-graph-scatter.png');
+      if (!renderResult.imageUrl) {
         return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
       }
       const highestPp = Math.max(...points.map(point => point.pp));
@@ -1321,8 +1387,8 @@ export async function execute(interaction) {
       const fallbackNote = useFallback
         ? '\n指定期間データが少ないため、Topスコア全体で描画しています'
         : '';
-      const samplingNote = buildSamplingNote(chartMeta);
-      const deliveryNote = buildChartDeliveryNote(chartMeta);
+      const samplingNote = buildSamplingNote(renderResult.chartMeta);
+      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
 
       const embed = new EmbedBuilder()
         .setColor('#7F8CFF')
@@ -1345,14 +1411,14 @@ export async function execute(interaction) {
             inline: false
           }
         )
-        .setImage(chartMeta.url)
+        .setImage(renderResult.imageUrl)
         .setTimestamp(new Date());
 
       if (user.avatar_url) {
         embed.setThumbnail(user.avatar_url);
       }
 
-      return interaction.editReply({ embeds: [embed] });
+      return interaction.editReply({ embeds: [embed], files: renderResult.files });
     }
 
     const snapshots = await getSnapshotsSince({
@@ -1391,7 +1457,7 @@ export async function execute(interaction) {
       const labels = series.map(point => point.label);
       const ppValues = series.map(point => point.pp);
       const rankValues = series.map(point => point.rank);
-      let chartMeta = null;
+      let renderResult = null;
       let forecastNote = '';
 
       if (chartType === 'pp_rank_forecast') {
@@ -1420,7 +1486,7 @@ export async function execute(interaction) {
           forecastPpValues,
           forecastRankValues
         });
-        chartMeta = await buildChartUrlWithFallback(config);
+        renderResult = await buildChartRenderResult(config, 'osu-graph-forecast.png');
 
         const ppSlope = calcPerDayTrend(series, 'pp');
         const rankSlope = calcPerDayTrend(series, 'rank');
@@ -1431,15 +1497,15 @@ export async function execute(interaction) {
         ].join('\n');
       } else {
         const chartConfig = buildPpRankDualChartConfig({ labels, ppValues, rankValues });
-        chartMeta = await buildChartUrlWithFallback(chartConfig);
+        renderResult = await buildChartRenderResult(chartConfig, 'osu-graph-dual.png');
       }
 
-      if (!chartMeta?.url) {
+      if (!renderResult?.imageUrl) {
         return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
       }
 
-      const samplingNote = buildSamplingNote(chartMeta);
-      const deliveryNote = buildChartDeliveryNote(chartMeta);
+      const samplingNote = buildSamplingNote(renderResult.chartMeta);
+      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
 
       const rankHistoryNote =
         rankHistoryPoints.length > 0
@@ -1477,14 +1543,14 @@ export async function execute(interaction) {
             inline: false
           }
         )
-        .setImage(chartMeta.url)
+        .setImage(renderResult.imageUrl)
         .setTimestamp(new Date());
 
       if (user.avatar_url) {
         embed.setThumbnail(user.avatar_url);
       }
 
-      return interaction.editReply({ embeds: [embed] });
+      return interaction.editReply({ embeds: [embed], files: renderResult.files });
     }
 
     const labels = [];
@@ -1513,8 +1579,8 @@ export async function execute(interaction) {
     }
 
     const chartConfig = buildChartConfig({ labels, values, metric });
-    const chartMeta = await buildChartUrlWithFallback(chartConfig);
-    if (!chartMeta.url) {
+    const renderResult = await buildChartRenderResult(chartConfig, 'osu-graph-metric.png');
+    if (!renderResult.imageUrl) {
       return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
     }
 
@@ -1526,8 +1592,8 @@ export async function execute(interaction) {
       metric === 'global_rank' && rankHistoryPoints.length > 0
         ? '\n順位は osu! 公開履歴で連携前データを補完しています'
         : '';
-    const samplingNote = buildSamplingNote(chartMeta);
-    const deliveryNote = buildChartDeliveryNote(chartMeta);
+    const samplingNote = buildSamplingNote(renderResult.chartMeta);
+    const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
 
     const embed = new EmbedBuilder()
       .setColor('#00A8FF')
@@ -1549,14 +1615,14 @@ export async function execute(interaction) {
           inline: false
         }
       )
-      .setImage(chartMeta.url)
+      .setImage(renderResult.imageUrl)
       .setTimestamp(new Date());
 
     if (user.avatar_url) {
       embed.setThumbnail(user.avatar_url);
     }
 
-    return interaction.editReply({ embeds: [embed] });
+    return interaction.editReply({ embeds: [embed], files: renderResult.files });
   } catch (error) {
     log(`/osu-graph エラー: ${error.message}`, 'error');
     log(`エラースタック: ${error.stack}`, 'error');
