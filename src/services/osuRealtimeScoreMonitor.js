@@ -53,6 +53,7 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
   const beatmap = score?.beatmap || {};
   const beatmapset = score?.beatmapset || {};
   const statistics = score?.statistics || {};
+  const scoreMode = normalizeOsuMode(score?.mode || mode);
   
   const mods = Array.isArray(score?.mods) && score.mods.length > 0
     ? score.mods.join(', ')
@@ -64,19 +65,25 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
   const beatmapsetId = beatmapset?.id;
   const beatmapId = beatmap?.id;
   const beatmapUrl = beatmapsetId && beatmapId
-    ? `https://osu.ppy.sh/beatmapsets/${beatmapsetId}#${mode}/${beatmapId}`
+    ? `https://osu.ppy.sh/beatmapsets/${beatmapsetId}#${scoreMode}/${beatmapId}`
     : beatmapsetId
     ? `https://osu.ppy.sh/beatmapsets/${beatmapsetId}`
     : null;
   
-  // リプレイダウンロードリンク（モード指定なし）
-  // score.best_idがある場合はそれを使用、なければscore.idを使用
-  const scoreIdForReplay = score?.best_id || score?.id;
-  const replayUrl = scoreIdForReplay
-    ? `https://osu.ppy.sh/scores/${scoreIdForReplay}/download`
+  // score.id (mode付きURL) を使って誤リンクを防ぐ。
+  const scoreId = toFiniteNumber(score?.id);
+  const scoreUserId = toFiniteNumber(score?.user_id);
+  const expectedUserId = toFiniteNumber(user?.id);
+  const isSameUser = scoreUserId === null || expectedUserId === null || scoreUserId === expectedUserId;
+  const replayUrl = scoreId !== null && isSameUser
+    ? `https://osu.ppy.sh/scores/${scoreMode}/${Math.trunc(scoreId)}/download`
     : null;
-  
-  log(`[リプレイURL] Score ID: ${score?.id}, Best ID: ${score?.best_id}, User ID: ${score?.user_id}, URL: ${replayUrl}`, 'info');
+
+  if (!isSameUser) {
+    log(`[リプレイURL無効化] user mismatch: expected ${expectedUserId}, got ${scoreUserId}, score=${scoreId}`, 'error');
+  }
+
+  log(`[リプレイURL] Score ID: ${score?.id}, User ID: ${score?.user_id}, Mode: ${scoreMode}, URL: ${replayUrl}`, 'info');
   
   const pp = toFiniteNumber(score?.pp);
   const accuracy = toFiniteNumber(score?.accuracy);

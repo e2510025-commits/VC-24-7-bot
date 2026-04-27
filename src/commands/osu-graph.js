@@ -46,6 +46,9 @@ const FORECAST_DAYS_CHOICES = [
 const DAILY_TABLE_MAX_ROWS = 10;
 const BEST_SCATTER_LIMIT = 100;
 const MIN_SCATTER_POINTS_FOR_PERIOD = 8;
+const QUICKCHART_MAX_URL_LENGTH = 1900;
+const MAX_GRAPH_POINTS = 240;
+const MIN_GRAPH_POINTS = 24;
 const SCORE_GRADE_ORDER = ['D', 'C', 'B', 'A', 'S', 'SH', 'X', 'XH'];
 const SCORE_GRADE_COLORS = {
   D: '#E74C3C',
@@ -85,6 +88,132 @@ function toDateTimeLabel(dateLike) {
 function toFiniteNumber(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function toUtcDayKey(dateLike) {
+  const date = new Date(dateLike);
+  if (!Number.isFinite(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function buildSampleIndexes(length, targetCount) {
+  if (!Number.isInteger(length) || length <= 0) {
+    return [];
+  }
+
+  if (length <= targetCount) {
+    return Array.from({ length }, (_, index) => index);
+  }
+
+  const safeTarget = Math.max(2, Math.min(length, Math.trunc(targetCount)));
+  const lastIndex = length - 1;
+  const step = lastIndex / (safeTarget - 1);
+  const indexes = new Set([0, lastIndex]);
+
+  for (let index = 1; index < safeTarget - 1; index += 1) {
+    indexes.add(Math.round(step * index));
+  }
+
+  return [...indexes].sort((a, b) => a - b);
+}
+
+function sampleValues(values, indexes) {
+  if (!Array.isArray(values)) {
+    return values;
+  }
+
+  return indexes.map(index => values[index]);
+}
+
+function downsampleChartConfig(config, maxPoints) {
+  const labels = config?.data?.labels;
+  if (!Array.isArray(labels) || labels.length === 0 || labels.length <= maxPoints) {
+    return config;
+  }
+
+  const indexes = buildSampleIndexes(labels.length, maxPoints);
+  const sampledLabels = sampleValues(labels, indexes);
+  const sampledDatasets = Array.isArray(config?.data?.datasets)
+    ? config.data.datasets.map(dataset => {
+        if (!Array.isArray(dataset?.data) || dataset.data.length !== labels.length) {
+          return dataset;
+        }
+
+        return {
+          ...dataset,
+          data: sampleValues(dataset.data, indexes)
+        };
+      })
+    : config?.data?.datasets;
+
+  return {
+    ...config,
+    data: {
+      ...config.data,
+      labels: sampledLabels,
+      datasets: sampledDatasets
+    }
+  };
+}
+
+function buildChartUrlWithLimit(config) {
+  const originalLabels = Array.isArray(config?.data?.labels)
+    ? config.data.labels.length
+    : 0;
+
+  let targetPoints =
+    originalLabels > 0 ? Math.min(originalLabels, MAX_GRAPH_POINTS) : MAX_GRAPH_POINTS;
+  let sampledConfig = downsampleChartConfig(config, targetPoints);
+
+  while (true) {
+    const url = toQuickChartUrl(sampledConfig);
+    const sampledLabels = Array.isArray(sampledConfig?.data?.labels)
+      ? sampledConfig.data.labels.length
+      : 0;
+
+    if (url.length <= QUICKCHART_MAX_URL_LENGTH) {
+      return {
+        url,
+        originalLabels,
+        sampledLabels
+      };
+    }
+
+    if (targetPoints <= MIN_GRAPH_POINTS) {
+      return {
+        url: null,
+        originalLabels,
+        sampledLabels
+      };
+    }
+
+    const nextTarget = Math.max(MIN_GRAPH_POINTS, Math.floor(targetPoints * 0.75));
+    if (nextTarget === targetPoints) {
+      return {
+        url: null,
+        originalLabels,
+        sampledLabels
+      };
+    }
+
+    targetPoints = nextTarget;
+    sampledConfig = downsampleChartConfig(config, targetPoints);
+  }
+}
+
+function buildSamplingNote({ originalLabels, sampledLabels }) {
+  if (!Number.isInteger(originalLabels) || !Number.isInteger(sampledLabels)) {
+    return '';
+  }
+
+  if (sampledLabels <= 0 || originalLabels <= sampledLabels) {
+    return '';
+  }
+
+  return `\nデータ点が多いため ${formatNumber(originalLabels)}点 -> ${formatNumber(sampledLabels)}点 に間引いて表示しています`;
 }
 
 function startOfUtcDay(dateLike) {
@@ -994,6 +1123,11 @@ export async function execute(interaction) {
             sinceDate
           });
 
+          const rankHistoryPoints =
+            metric === 'global_rank'
+              ? buildRankHistoryPoints(user, sinceDate, now)
+              : [];
+
           const currentPoint = {
             captured_at: now.toISOString(),
             pp: stats.pp,
@@ -1002,12 +1136,33 @@ export async function execute(interaction) {
             play_count: stats.play_count
           };
 
-          const allPoints = [...snapshots, currentPoint];
-          const labels = allPoints.map(point => toDateLabel(point.captured_at));
-          const values = allPoints.map(point => {
-            const value = getSnapshotValue(point, metric);
-            return toFiniteNumber(value);
-          });
+          const mergedPoints = [...rankHistoryPoints, ...snapshots, currentPoint].sort(
+            (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
+          );
+          const dailyPoints = new Map();
+          for (const point of mergedPoints) {
+            const dayKey = toUtcDayKey(point.captured_at);
+            if (!dayKey) {
+              continue;
+            }
+            dailyPoints.set(dayKey, point);
+          }
+
+          const labels = [];
+          const values = [];
+
+          for (const [dayKey, point] of dailyPoints.entries()) {
+            const value = toFiniteNumber(getSnapshotValue(point, metric));
+            if (value === null) {
+              continue;
+            }
+            labels.push(dayKey);
+            values.push(value);
+          }
+
+          if (values.length === 0) {
+            continue;
+          }
 
           userDatasets.push({
             username: user.username,
@@ -1024,12 +1179,16 @@ export async function execute(interaction) {
       }
 
       const chartConfig = buildCompareUsersChartConfig({ userDatasets, metric });
-      const chartUrl = toQuickChartUrl(chartConfig);
+      const chartMeta = buildChartUrlWithLimit(chartConfig);
+      if (!chartMeta.url) {
+        return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+      }
+      const samplingNote = buildSamplingNote(chartMeta);
 
       const embed = new EmbedBuilder()
         .setColor('#6C5CE7')
         .setTitle(`複数人比較: ${metricLabel(metric)} [${getModeLabel(mode)}]`)
-        .setDescription(`期間: ${period.label}\n比較人数: ${userDatasets.length}人`)
+        .setDescription(`期間: ${period.label}\n比較人数: ${userDatasets.length}人${samplingNote}`)
         .addFields(
           userDatasets.map((data, index) => ({
             name: `${index + 1}. ${data.username}`,
@@ -1037,7 +1196,7 @@ export async function execute(interaction) {
             inline: true
           }))
         )
-        .setImage(chartUrl)
+        .setImage(chartMeta.url)
         .setTimestamp(new Date());
 
       return interaction.editReply({ embeds: [embed] });
@@ -1093,7 +1252,10 @@ export async function execute(interaction) {
       }
 
       const scatter = buildBestPpScatterChartConfig(points);
-      const chartUrl = toQuickChartUrl(scatter.config);
+      const chartMeta = buildChartUrlWithLimit(scatter.config);
+      if (!chartMeta.url) {
+        return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+      }
       const highestPp = Math.max(...points.map(point => point.pp));
       const regressionText =
         scatter.slope === null
@@ -1102,12 +1264,13 @@ export async function execute(interaction) {
       const fallbackNote = useFallback
         ? '\n指定期間データが少ないため、Topスコア全体で描画しています'
         : '';
+      const samplingNote = buildSamplingNote(chartMeta);
 
       const embed = new EmbedBuilder()
         .setColor('#7F8CFF')
         .setTitle(`${user.username} のBest PP散布図 [${getModeLabel(mode)}]`)
         .setURL(`https://osu.ppy.sh/users/${user.id}`)
-        .setDescription(`${period.label} / Top${BEST_SCATTER_LIMIT}由来の散布図${fallbackNote}`)
+        .setDescription(`${period.label} / Top${BEST_SCATTER_LIMIT}由来の散布図${fallbackNote}${samplingNote}`)
         .addFields(
           {
             name: '統計',
@@ -1124,7 +1287,7 @@ export async function execute(interaction) {
             inline: false
           }
         )
-        .setImage(chartUrl)
+        .setImage(chartMeta.url)
         .setTimestamp(new Date());
 
       if (user.avatar_url) {
@@ -1141,10 +1304,11 @@ export async function execute(interaction) {
       untilDate: now
     });
 
-    const rankHistoryPoints =
-      chartType === 'pp_rank_dual' || metric === 'global_rank'
-        ? buildRankHistoryPoints(user, sinceDate, now)
-        : [];
+    const chartNeedsRankHistory =
+      chartType === 'pp_rank_dual' ||
+      chartType === 'pp_rank_forecast' ||
+      metric === 'global_rank';
+    const rankHistoryPoints = chartNeedsRankHistory ? buildRankHistoryPoints(user, sinceDate, now) : [];
 
     const merged = [...rankHistoryPoints, ...snapshots, currentPoint].sort(
       (a, b) => new Date(a.captured_at).getTime() - new Date(b.captured_at).getTime()
@@ -1152,7 +1316,10 @@ export async function execute(interaction) {
 
     const dailyPoints = new Map();
     for (const point of merged) {
-      const key = new Date(point.captured_at).toISOString().slice(0, 10);
+      const key = toUtcDayKey(point.captured_at);
+      if (!key) {
+        continue;
+      }
       dailyPoints.set(key, point);
     }
 
@@ -1166,7 +1333,7 @@ export async function execute(interaction) {
       const labels = series.map(point => point.label);
       const ppValues = series.map(point => point.pp);
       const rankValues = series.map(point => point.rank);
-      let chartUrl = null;
+      let chartMeta = null;
       let forecastNote = '';
 
       if (chartType === 'pp_rank_forecast') {
@@ -1195,7 +1362,7 @@ export async function execute(interaction) {
           forecastPpValues,
           forecastRankValues
         });
-        chartUrl = toQuickChartUrl(config);
+        chartMeta = buildChartUrlWithLimit(config);
 
         const ppSlope = calcPerDayTrend(series, 'pp');
         const rankSlope = calcPerDayTrend(series, 'rank');
@@ -1206,8 +1373,14 @@ export async function execute(interaction) {
         ].join('\n');
       } else {
         const chartConfig = buildPpRankDualChartConfig({ labels, ppValues, rankValues });
-        chartUrl = toQuickChartUrl(chartConfig);
+        chartMeta = buildChartUrlWithLimit(chartConfig);
       }
+
+      if (!chartMeta?.url) {
+        return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+      }
+
+      const samplingNote = buildSamplingNote(chartMeta);
 
       const rankHistoryNote =
         rankHistoryPoints.length > 0
@@ -1224,8 +1397,8 @@ export async function execute(interaction) {
         .setURL(`https://osu.ppy.sh/users/${user.id}`)
         .setDescription(
           chartType === 'pp_rank_forecast'
-            ? `${period.label} / 予測グラフ${rankHistoryNote}`
-            : `${period.label} / 二軸グラフ${rankHistoryNote}`
+            ? `${period.label} / 予測グラフ${rankHistoryNote}${samplingNote}`
+            : `${period.label} / 二軸グラフ${rankHistoryNote}${samplingNote}`
         )
         .addFields(
           {
@@ -1245,7 +1418,7 @@ export async function execute(interaction) {
             inline: false
           }
         )
-        .setImage(chartUrl)
+        .setImage(chartMeta.url)
         .setTimestamp(new Date());
 
       if (user.avatar_url) {
@@ -1281,7 +1454,10 @@ export async function execute(interaction) {
     }
 
     const chartConfig = buildChartConfig({ labels, values, metric });
-    const chartUrl = toQuickChartUrl(chartConfig);
+    const chartMeta = buildChartUrlWithLimit(chartConfig);
+    if (!chartMeta.url) {
+      return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+    }
 
     const currentValue = metric === 'global_rank'
       ? getStatsValue(stats, 'global_rank')
@@ -1291,12 +1467,13 @@ export async function execute(interaction) {
       metric === 'global_rank' && rankHistoryPoints.length > 0
         ? '\n順位は osu! 公開履歴で連携前データを補完しています'
         : '';
+    const samplingNote = buildSamplingNote(chartMeta);
 
     const embed = new EmbedBuilder()
       .setColor('#00A8FF')
       .setTitle(`${user.username} の推移グラフ [${getModeLabel(mode)}]`)
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription(`${period.label} / 指標: ${metricLabel(metric)}${dataSourceNote}`)
+      .setDescription(`${period.label} / 指標: ${metricLabel(metric)}${dataSourceNote}${samplingNote}`)
       .addFields(
         {
           name: '現在値',
@@ -1312,7 +1489,7 @@ export async function execute(interaction) {
           inline: false
         }
       )
-      .setImage(chartUrl)
+      .setImage(chartMeta.url)
       .setTimestamp(new Date());
 
     if (user.avatar_url) {
