@@ -1,6 +1,6 @@
 import { createMusicPanel } from '../music/panel.js';
 import { MessageFlags } from 'discord.js';
-import { handleAuthModalSubmit } from '../commands/auth.js';
+import { handleAuthModalSubmit, showAuthModal } from '../commands/auth.js';
 import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
@@ -47,6 +47,9 @@ export async function execute(interaction, client) {
 
     try {
       switch (interaction.customId) {
+        case 'auth-panel:open':
+          await showAuthModal(interaction);
+          break;
         case 'music_skip':
           await musicPlayer.skip(interaction.guildId);
           await interaction.reply({ 

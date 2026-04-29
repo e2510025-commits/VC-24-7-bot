@@ -16,6 +16,7 @@ import * as disconnectCommand from './commands/disconnect.js';
 import * as volumeCommand from './commands/volume.js';
 import * as authCommand from './commands/auth.js';
 import * as authAdminCommand from './commands/auth-admin.js';
+import * as authPanelCommand from './commands/auth-panel.js';
 import * as osuLinkCommand from './commands/osu-link.js';
 import * as osuDmCommand from './commands/osu-dm.js';
 import * as osuProfileCommand from './commands/osu-profile.js';
@@ -32,12 +33,14 @@ import * as osuLeagueCommand from './commands/osu-league.js';
 import * as osuAdminCommand from './commands/osu-admin.js';
 import * as osuRoleSetupCommand from './commands/osu-role-setup.js';
 import * as languageCommand from './commands/language.js';
+import * as cloneCategoryCommand from './commands/clone-category.js';
 
 config();
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
@@ -52,6 +55,7 @@ client.commands.set(disconnectCommand.data.name, disconnectCommand);
 client.commands.set(volumeCommand.data.name, volumeCommand);
 client.commands.set(authCommand.data.name, authCommand);
 client.commands.set(authAdminCommand.data.name, authAdminCommand);
+client.commands.set(authPanelCommand.data.name, authPanelCommand);
 client.commands.set(osuLinkCommand.data.name, osuLinkCommand);
 client.commands.set(osuDmCommand.data.name, osuDmCommand);
 client.commands.set(osuProfileCommand.data.name, osuProfileCommand);
@@ -68,6 +72,7 @@ client.commands.set(osuLeagueCommand.data.name, osuLeagueCommand);
 client.commands.set(osuAdminCommand.data.name, osuAdminCommand);
 client.commands.set(osuRoleSetupCommand.data.name, osuRoleSetupCommand);
 client.commands.set(languageCommand.data.name, languageCommand);
+client.commands.set(cloneCategoryCommand.data.name, cloneCategoryCommand);
 
 // 音楽プレイヤー初期化
 client.musicPlayer = new MusicPlayer(client);

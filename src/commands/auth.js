@@ -34,10 +34,12 @@ export const data = new SlashCommandBuilder()
   .setName('auth')
   .setDescription('簡単な計算に答えて認証ロールを取得します');
 
-export async function execute(interaction) {
+export async function showAuthModal(interaction) {
+  const lang = await resolveUserLanguage(interaction.user.id);
+
   if (!interaction.guildId) {
     return interaction.reply({
-      content: translate('ja', 'common.guildOnly'),
+      content: translate(lang, 'common.guildOnly'),
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -45,7 +47,6 @@ export async function execute(interaction) {
   try {
     const settings = await getAuthSettings(interaction.guildId);
     if (!settings.verified_role_id) {
-      const lang = await resolveUserLanguage(interaction.user.id);
       return interaction.reply({
         content: translate(lang, 'auth.roleNotSet'),
         flags: [MessageFlags.Ephemeral]
@@ -70,10 +71,14 @@ export async function execute(interaction) {
   } catch (error) {
     log(`/auth エラー: ${error.message}`, 'error');
     await interaction.reply({
-      content: translate('ja', 'auth.failed'),
+      content: translate(lang, 'auth.failed'),
       flags: [MessageFlags.Ephemeral]
     });
   }
+}
+
+export async function execute(interaction) {
+  return showAuthModal(interaction);
 }
 
 export async function handleAuthModalSubmit(interaction) {
