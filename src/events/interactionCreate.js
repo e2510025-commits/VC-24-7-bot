@@ -1,5 +1,6 @@
 import { createMusicPanel } from '../music/panel.js';
 import { MessageFlags } from 'discord.js';
+import { handleAuthModalSubmit } from '../commands/auth.js';
 import { log } from '../utils/logger.js';
 
 export const name = 'interactionCreate';
@@ -132,6 +133,13 @@ export async function execute(interaction, client) {
       } catch (replyError) {
         log(`エラー応答の送信に失敗: ${replyError.message}`, 'error');
       }
+    }
+  }
+
+  // モーダル処理
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('auth-verify:')) {
+      await handleAuthModalSubmit(interaction);
     }
   }
 }

@@ -14,8 +14,8 @@ import * as playCommand from './commands/play.js';
 import * as connectCommand from './commands/connect.js';
 import * as disconnectCommand from './commands/disconnect.js';
 import * as volumeCommand from './commands/volume.js';
-import * as roleCommand from './commands/role.js';
-import * as createroleCommand from './commands/createrole.js';
+import * as authCommand from './commands/auth.js';
+import * as authAdminCommand from './commands/auth-admin.js';
 import * as osuLinkCommand from './commands/osu-link.js';
 import * as osuDmCommand from './commands/osu-dm.js';
 import * as osuProfileCommand from './commands/osu-profile.js';
@@ -30,6 +30,7 @@ import * as osuHeatmapCommand from './commands/osu-heatmap.js';
 import * as osuTopplaysCommand from './commands/osu-topplays.js';
 import * as osuLeagueCommand from './commands/osu-league.js';
 import * as osuAdminCommand from './commands/osu-admin.js';
+import * as osuRoleSetupCommand from './commands/osu-role-setup.js';
 
 config();
 
@@ -48,8 +49,8 @@ client.commands.set(playCommand.data.name, playCommand);
 client.commands.set(connectCommand.data.name, connectCommand);
 client.commands.set(disconnectCommand.data.name, disconnectCommand);
 client.commands.set(volumeCommand.data.name, volumeCommand);
-client.commands.set(roleCommand.data.name, roleCommand);
-client.commands.set(createroleCommand.data.name, createroleCommand);
+client.commands.set(authCommand.data.name, authCommand);
+client.commands.set(authAdminCommand.data.name, authAdminCommand);
 client.commands.set(osuLinkCommand.data.name, osuLinkCommand);
 client.commands.set(osuDmCommand.data.name, osuDmCommand);
 client.commands.set(osuProfileCommand.data.name, osuProfileCommand);
@@ -64,6 +65,7 @@ client.commands.set(osuHeatmapCommand.data.name, osuHeatmapCommand);
 client.commands.set(osuTopplaysCommand.data.name, osuTopplaysCommand);
 client.commands.set(osuLeagueCommand.data.name, osuLeagueCommand);
 client.commands.set(osuAdminCommand.data.name, osuAdminCommand);
+client.commands.set(osuRoleSetupCommand.data.name, osuRoleSetupCommand);
 
 // 音楽プレイヤー初期化
 client.musicPlayer = new MusicPlayer(client);

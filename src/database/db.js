@@ -37,6 +37,18 @@ export async function testConnection() {
       )
     `);
 
+    // 認証ロール設定（ギルド単位）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS guild_auth_settings (
+        guild_id VARCHAR(255) PRIMARY KEY,
+        verified_role_id VARCHAR(255),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query('ALTER TABLE guild_auth_settings ADD COLUMN IF NOT EXISTS verified_role_id VARCHAR(255)');
+    await client.query('ALTER TABLE guild_auth_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+
     // osu! リンク経験者の恒久追跡テーブル
     await client.query(`
       CREATE TABLE IF NOT EXISTS osu_tracked_users (
@@ -122,6 +134,7 @@ export async function testConnection() {
         report_channel_id VARCHAR(255),
         realtime_score_channel_id VARCHAR(255),
         daily_history_channel_id VARCHAR(255),
+        important_update_role_id VARCHAR(255),
         alert_pp_threshold DOUBLE PRECISION NOT NULL DEFAULT 10,
         alert_rank_threshold INTEGER NOT NULL DEFAULT 500,
         snapshot_interval_minutes INTEGER NOT NULL DEFAULT 60,
@@ -137,6 +150,7 @@ export async function testConnection() {
     // 既存テーブルへのカラム追加（後方互換性）
     await client.query('ALTER TABLE osu_guild_settings ADD COLUMN IF NOT EXISTS realtime_score_channel_id VARCHAR(255)');
     await client.query('ALTER TABLE osu_guild_settings ADD COLUMN IF NOT EXISTS daily_history_channel_id VARCHAR(255)');
+    await client.query('ALTER TABLE osu_guild_settings ADD COLUMN IF NOT EXISTS important_update_role_id VARCHAR(255)');
 
     // osu! ベストプレイ追跡
     await client.query(`

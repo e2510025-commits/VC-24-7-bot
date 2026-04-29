@@ -39,6 +39,11 @@ function channelLabel(id) {
   return `<#${id}>`;
 }
 
+function roleLabel(id) {
+  if (!id) return '未設定';
+  return `<@&${id}>`;
+}
+
 function weekdayLabel(value) {
   const found = WEEKDAY_CHOICES.find(item => item.value === Number(value));
   return found ? found.name : String(value);
@@ -153,6 +158,20 @@ export const data = new SlashCommandBuilder()
           .setRequired(false)
       )
   );
+  
+export const dataWithRole = data.addSubcommand(subcommand =>
+  subcommand
+    .setName('set-role')
+    .setDescription('重要更新時にメンションするロールを設定します')
+    .addRoleOption(option =>
+      option
+        .setName('role')
+        .setDescription('設定するロール（省略で解除）')
+        .setRequired(false)
+    )
+);
+
+export const data = dataWithRole;
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
@@ -178,6 +197,11 @@ export async function execute(interaction) {
           {
             name: '通知チャンネル',
             value: `成長アラート: ${channelLabel(settings.alert_channel_id)}\n週次レポート: ${channelLabel(settings.report_channel_id)}\nリアルタイムスコア: ${channelLabel(settings.realtime_score_channel_id)}\n日次プレイ履歴: ${channelLabel(settings.daily_history_channel_id)}`,
+            inline: false
+          },
+          {
+            name: '重要更新ロール',
+            value: roleLabel(settings.important_update_role_id),
             inline: false
           },
           {
@@ -279,6 +303,19 @@ export async function execute(interaction) {
 
       await upsertGuildOsuSettings(guildId, patch);
       return interaction.editReply('✅ 週次レポート設定を更新しました');
+    }
+
+    if (subcommand === 'set-role') {
+      const role = interaction.options.getRole('role');
+      await upsertGuildOsuSettings(guildId, {
+        important_update_role_id: role?.id || null
+      });
+
+      if (role) {
+        return interaction.editReply(`✅ 重要更新メンションロールを ${role} に設定しました`);
+      }
+
+      return interaction.editReply('✅ 重要更新メンションロールを解除しました');
     }
 
     return interaction.editReply('❌ 不明なサブコマンドです');
