@@ -7,6 +7,7 @@ import {
   MessageFlags
 } from 'discord.js';
 import { getAuthSettings } from '../database/authSettings.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const AUTH_QUESTIONS = [
@@ -36,7 +37,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   if (!interaction.guildId) {
     return interaction.reply({
-      content: '❌ サーバー内で実行してください',
+      content: translate('ja', 'common.guildOnly'),
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -44,8 +45,9 @@ export async function execute(interaction) {
   try {
     const settings = await getAuthSettings(interaction.guildId);
     if (!settings.verified_role_id) {
+      const lang = await resolveUserLanguage(interaction.user.id);
       return interaction.reply({
-        content: '❌ 認証ロールが未設定です。管理者に `/auth-admin set-role` を依頼してください。',
+        content: translate(lang, 'auth.roleNotSet'),
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -68,7 +70,7 @@ export async function execute(interaction) {
   } catch (error) {
     log(`/auth エラー: ${error.message}`, 'error');
     await interaction.reply({
-      content: '❌ 認証処理でエラーが発生しました',
+      content: translate('ja', 'auth.failed'),
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -84,9 +86,10 @@ export async function handleAuthModalSubmit(interaction) {
 
   const [, questionId, issuedAtRaw] = interaction.customId.split(':');
   const question = AUTH_QUESTIONS.find(item => item.id === questionId);
+  const lang = await resolveUserLanguage(interaction.user.id);
   if (!question) {
     return interaction.reply({
-      content: '❌ 認証問題が見つかりませんでした。もう一度 `/auth` を実行してください。',
+      content: translate(lang, 'auth.questionMissing'),
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -94,7 +97,7 @@ export async function handleAuthModalSubmit(interaction) {
   const issuedAt = Number(issuedAtRaw);
   if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > 60 * 1000) {
     return interaction.reply({
-      content: '❌ 制限時間を超過しました。もう一度 `/auth` を実行してください。',
+      content: translate(lang, 'auth.timeLimit'),
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -103,14 +106,14 @@ export async function handleAuthModalSubmit(interaction) {
   const numericAnswer = Number(rawAnswer);
   if (!Number.isFinite(numericAnswer)) {
     return interaction.reply({
-      content: '❌ 数字で回答してください。',
+      content: translate(lang, 'auth.numericOnly'),
       flags: [MessageFlags.Ephemeral]
     });
   }
 
   if (numericAnswer !== question.answer) {
     return interaction.reply({
-      content: '❌ 不正解です。もう一度 `/auth` を実行してください。',
+      content: translate(lang, 'auth.wrong'),
       flags: [MessageFlags.Ephemeral]
     });
   }
@@ -119,7 +122,7 @@ export async function handleAuthModalSubmit(interaction) {
     const settings = await getAuthSettings(interaction.guildId);
     if (!settings.verified_role_id) {
       return interaction.reply({
-        content: '❌ 認証ロールが未設定です。管理者に `/auth-admin set-role` を依頼してください。',
+        content: translate(lang, 'auth.roleNotSet'),
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -127,7 +130,7 @@ export async function handleAuthModalSubmit(interaction) {
     const member = interaction.member;
     if (!member || !('roles' in member)) {
       return interaction.reply({
-        content: '❌ サーバーメンバー情報の取得に失敗しました。',
+        content: translate(lang, 'auth.memberMissing'),
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -135,7 +138,7 @@ export async function handleAuthModalSubmit(interaction) {
     const role = interaction.guild.roles.cache.get(settings.verified_role_id);
     if (!role) {
       return interaction.reply({
-        content: '❌ 認証ロールが見つかりません。管理者に確認してください。',
+        content: translate(lang, 'auth.roleMissing'),
         flags: [MessageFlags.Ephemeral]
       });
     }
@@ -143,27 +146,27 @@ export async function handleAuthModalSubmit(interaction) {
     const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
     if (!isManageableRole(role, botMember)) {
       return interaction.reply({
-        content: '❌ Botの権限が不足しています。ロールの順序を確認してください。',
+        content: translate(lang, 'auth.roleNotManageable'),
         flags: [MessageFlags.Ephemeral]
       });
     }
 
     if (member.roles.cache.has(role.id)) {
       return interaction.reply({
-        content: `✅ すでに認証済みです (${role}).`,
+        content: translate(lang, 'auth.alreadyVerified', { role: `${role}` }),
         flags: [MessageFlags.Ephemeral]
       });
     }
 
     await member.roles.add(role);
     return interaction.reply({
-      content: `✅ 認証成功！ ${role} を付与しました。`,
+      content: translate(lang, 'auth.success', { role: `${role}` }),
       flags: [MessageFlags.Ephemeral]
     });
   } catch (error) {
     log(`/auth モーダル処理エラー: ${error.message}`, 'error');
     return interaction.reply({
-      content: '❌ 認証ロールの付与に失敗しました。',
+      content: translate(lang, 'auth.assignFailed'),
       flags: [MessageFlags.Ephemeral]
     });
   }

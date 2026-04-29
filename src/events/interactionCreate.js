@@ -1,6 +1,7 @@
 import { createMusicPanel } from '../music/panel.js';
 import { MessageFlags } from 'discord.js';
 import { handleAuthModalSubmit } from '../commands/auth.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const name = 'interactionCreate';
@@ -16,9 +17,11 @@ export async function execute(interaction, client) {
     } catch (error) {
       log(`コマンドエラー: ${error.message}`, 'error');
       log(`エラースタック: ${error.stack}`, 'error');
+
+      const lang = await resolveUserLanguage(interaction.user.id).catch(() => 'ja');
       
       const reply = { 
-        content: '❌ コマンド実行中にエラーが発生しました', 
+        content: translate(lang, 'common.commandFailed'), 
         flags: [MessageFlags.Ephemeral]
       };
       

@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
 import { getAuthSettings, upsertAuthSettings } from '../database/authSettings.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 function roleLabel(id) {
@@ -38,14 +39,15 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     if (!interaction.guildId) {
-      return interaction.editReply('❌ サーバー内で実行してください');
+      return interaction.editReply(translate(lang, 'common.guildOnly'));
     }
 
     if (!requireAdmin(interaction)) {
-      return interaction.editReply('❌ このコマンドはサーバー管理者のみ実行できます');
+      return interaction.editReply(translate(lang, 'common.adminOnly'));
     }
 
     const subcommand = interaction.options.getSubcommand();
@@ -53,7 +55,7 @@ export async function execute(interaction) {
     if (subcommand === 'show') {
       const settings = await getAuthSettings(interaction.guildId);
       return interaction.editReply(
-        `✅ 認証ロール: ${roleLabel(settings.verified_role_id)}`
+        translate(lang, 'authAdmin.show', { role: roleLabel(settings.verified_role_id) })
       );
     }
 
@@ -64,13 +66,15 @@ export async function execute(interaction) {
       });
 
       if (role) {
-        return interaction.editReply(`✅ 認証ロールを ${role} に設定しました`);
+        return interaction.editReply(
+          translate(lang, 'authAdmin.roleSet', { role: `${role}` })
+        );
       }
 
-      return interaction.editReply('✅ 認証ロールを解除しました');
+      return interaction.editReply(translate(lang, 'authAdmin.roleCleared'));
     }
 
-    return interaction.editReply('❌ 不明なサブコマンドです');
+    return interaction.editReply(translate(lang, 'common.unknownSubcommand'));
   } catch (error) {
     log(`/auth-admin エラー: ${error.message}`, 'error');
     return interaction.editReply(`❌ 設定更新中にエラーが発生しました: ${error.message}`);

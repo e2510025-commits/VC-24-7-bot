@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const PLAY_TIME_ROLE_NAMES = [
@@ -41,19 +42,20 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     if (!interaction.guild) {
-      return interaction.editReply('❌ サーバー内で実行してください');
+      return interaction.editReply(translate(lang, 'common.guildOnly'));
     }
 
     if (!requireAdmin(interaction)) {
-      return interaction.editReply('❌ このコマンドはサーバー管理者のみ実行できます');
+      return interaction.editReply(translate(lang, 'common.adminOnly'));
     }
 
     const me = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
     if (!me || !me.permissions.has(PermissionFlagsBits.ManageRoles)) {
-      return interaction.editReply('❌ Botにロール管理権限がありません');
+      return interaction.editReply(translate(lang, 'common.botNoRolePerm'));
     }
 
     const roleNames = [...PLAY_TIME_ROLE_NAMES, ...PP_ROLE_NAMES];
@@ -81,18 +83,18 @@ export async function execute(interaction) {
 
     const lines = [];
     if (created.length > 0) {
-      lines.push(`✅ 作成: ${created.join(', ')}`);
+      lines.push(translate(lang, 'osuRoleSetup.created', { roles: created.join(', ') }));
     }
     if (skipped.length > 0) {
-      lines.push(`ℹ️ 既存: ${skipped.join(', ')}`);
+      lines.push(translate(lang, 'osuRoleSetup.exists', { roles: skipped.join(', ') }));
     }
     if (lines.length === 0) {
-      lines.push('❌ ロールを作成できませんでした。権限やロール上限を確認してください。');
+      lines.push(translate(lang, 'osuRoleSetup.none'));
     }
 
     return interaction.editReply(lines.join('\n'));
   } catch (error) {
     log(`/osu-role-setup エラー: ${error.message}`, 'error');
-    return interaction.editReply('❌ ロール作成中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osuRoleSetup.failed'));
   }
 }

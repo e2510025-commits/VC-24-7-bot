@@ -49,6 +49,18 @@ export async function testConnection() {
     await client.query('ALTER TABLE guild_auth_settings ADD COLUMN IF NOT EXISTS verified_role_id VARCHAR(255)');
     await client.query('ALTER TABLE guild_auth_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
 
+    // ユーザー別言語設定
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        discord_id VARCHAR(255) PRIMARY KEY,
+        language VARCHAR(8) NOT NULL DEFAULT 'ja',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query('ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS language VARCHAR(8) NOT NULL DEFAULT \'ja\'');
+    await client.query('ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
+
     // osu! リンク経験者の恒久追跡テーブル
     await client.query(`
       CREATE TABLE IF NOT EXISTS osu_tracked_users (

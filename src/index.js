@@ -31,6 +31,7 @@ import * as osuTopplaysCommand from './commands/osu-topplays.js';
 import * as osuLeagueCommand from './commands/osu-league.js';
 import * as osuAdminCommand from './commands/osu-admin.js';
 import * as osuRoleSetupCommand from './commands/osu-role-setup.js';
+import * as languageCommand from './commands/language.js';
 
 config();
 
@@ -66,6 +67,7 @@ client.commands.set(osuTopplaysCommand.data.name, osuTopplaysCommand);
 client.commands.set(osuLeagueCommand.data.name, osuLeagueCommand);
 client.commands.set(osuAdminCommand.data.name, osuAdminCommand);
 client.commands.set(osuRoleSetupCommand.data.name, osuRoleSetupCommand);
+client.commands.set(languageCommand.data.name, languageCommand);
 
 // 音楽プレイヤー初期化
 client.musicPlayer = new MusicPlayer(client);
