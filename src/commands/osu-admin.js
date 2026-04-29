@@ -54,7 +54,7 @@ function toInt(value, fallback) {
   return Number.isFinite(numeric) ? Math.trunc(numeric) : fallback;
 }
 
-export const data = new SlashCommandBuilder()
+const data = new SlashCommandBuilder()
   .setName('osu-admin')
   .setDescription('osu!機能のサーバー設定を管理します')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
@@ -159,7 +159,7 @@ export const data = new SlashCommandBuilder()
       )
   );
   
-export const dataWithRole = data.addSubcommand(subcommand =>
+data.addSubcommand(subcommand =>
   subcommand
     .setName('set-role')
     .setDescription('重要更新時にメンションするロールを設定します')
@@ -171,7 +171,7 @@ export const dataWithRole = data.addSubcommand(subcommand =>
     )
 );
 
-export const data = dataWithRole;
+export { data };
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
