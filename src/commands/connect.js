@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, ChannelType } from 'discord.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -14,13 +15,15 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction, musicPlayer) {
   await interaction.deferReply();
 
+  const lang = await resolveUserLanguage(interaction.user.id);
+
   const member = interaction.member;
   let targetChannel = interaction.options.getChannel('channel');
 
   // チャンネル指定がない場合は実行者のVCに接続
   if (!targetChannel) {
     if (!member.voice.channel) {
-      return interaction.editReply('❌ ボイスチャンネルに参加するか、チャンネルを指定してください');
+      return interaction.editReply(translate(lang, 'music.joinRequired'));
     }
     targetChannel = member.voice.channel;
   }
@@ -33,11 +36,13 @@ export async function execute(interaction, musicPlayer) {
     musicPlayer.joinVC(interaction.guildId, targetChannel.id);
 
     log(`${targetChannel.name} に接続しました`, 'voice');
-    await interaction.editReply(`✅ ${targetChannel.name} に接続しました`);
+    await interaction.editReply(
+      translate(lang, 'music.connected', { channel: targetChannel.name })
+    );
 
   } catch (error) {
     log(`接続エラー: ${error.message}`, 'error');
     log(`エラースタック: ${error.stack}`, 'error');
-    await interaction.editReply('❌ 接続中にエラーが発生しました');
+    await interaction.editReply(translate(lang, 'music.connectFailed'));
   }
 }

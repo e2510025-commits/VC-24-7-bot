@@ -1,4 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -7,6 +8,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction, musicPlayer) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const guild = interaction.guild;
@@ -16,17 +18,17 @@ export async function execute(interaction, musicPlayer) {
 
     // botがVCに接続していない場合
     if (!queue.audioPlayer && !connection && !me?.voice?.channelId) {
-      return interaction.editReply('❌ ボイスチャンネルに接続していません');
+      return interaction.editReply(translate(lang, 'music.notConnected'));
     }
 
     // プレイヤーを破棄 & キューをクリア & Raw接続も切断
     await musicPlayer.disconnect(interaction.guildId);
 
     log('ボイスチャンネルから切断しました', 'voice');
-    await interaction.editReply('✅ 切断しました');
+    await interaction.editReply(translate(lang, 'music.disconnected'));
 
   } catch (error) {
     log(`切断エラー: ${error.message}`, 'error');
-    await interaction.editReply('❌ 切断中にエラーが発生しました');
+    await interaction.editReply(translate(lang, 'music.disconnectFailed'));
   }
 }

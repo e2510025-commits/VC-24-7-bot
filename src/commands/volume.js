@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { pool } from '../database/db.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -15,6 +16,8 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction, musicPlayer) {
   await interaction.deferReply();
+
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   const volume = interaction.options.getInteger('level');
 
@@ -38,11 +41,13 @@ export async function execute(interaction, musicPlayer) {
       log(`現在の再生音量を変更: ${volume}%`, 'music');
     }
 
-    await interaction.editReply(`✅ 音量を ${volume}% に設定・保存しました`);
+    await interaction.editReply(
+      translate(lang, 'volume.saved', { volume })
+    );
 
   } catch (error) {
     log(`音量設定エラー: ${error.message}`, 'error');
     log(`エラースタック: ${error.stack}`, 'error');
-    await interaction.editReply('❌ 音量設定中にエラーが発生しました');
+    await interaction.editReply(translate(lang, 'volume.failed'));
   }
 }

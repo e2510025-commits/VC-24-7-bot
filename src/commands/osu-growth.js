@@ -14,6 +14,7 @@ import {
   normalizeOsuMode,
   toDiscordTimestamp
 } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const WINDOWS = [
@@ -437,6 +438,7 @@ function buildTargetPpForecast(points, currentPp, targetPp) {
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const requestedMode = interaction.options.getString('mode') || 'osu';
@@ -448,7 +450,7 @@ export async function execute(interaction) {
 
     if (!targetUsername) {
       return interaction.editReply(
-        '❌ ユーザー名を指定するか、先に `/osu-link username:<osu名>` で連携してください'
+        translate(lang, 'osu.requireLink')
       );
     }
 
@@ -508,7 +510,7 @@ export async function execute(interaction) {
     } else {
       const baselineInfo = resolveBaseline(baseline, now);
       if (!baselineInfo) {
-        return interaction.editReply('❌ baseline の指定が不正です');
+        return interaction.editReply(translate(lang, 'osu.growth.invalidBaseline'));
       }
 
       const snapshot = await getClosestSnapshotBefore({
@@ -707,6 +709,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ 成長率データ取得中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.growth.failed'));
   }
 }

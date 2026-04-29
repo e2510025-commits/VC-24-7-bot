@@ -10,6 +10,7 @@ import {
   normalizeOsuMode,
   toDiscordTimestamp
 } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -65,12 +66,13 @@ function buildScoreTitle(score) {
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
       return interaction.editReply(
-        '❌ ユーザー名を指定するか、先に /osu-link username:<osu名> で連携してください'
+        translate(lang, 'osu.requireLink')
       );
     }
 
@@ -81,7 +83,7 @@ export async function execute(interaction) {
     const scores = await fetchBestScores(user.id, mode, limit);
 
     if (!Array.isArray(scores) || scores.length === 0) {
-      return interaction.editReply('❌ Top Playsの取得に失敗しました');
+      return interaction.editReply(translate(lang, 'osu.topplays.fetchFailed'));
     }
 
     const currentIds = scores
@@ -188,6 +190,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ Top Plays追跡中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.topplays.failed'));
   }
 }

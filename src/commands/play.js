@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, StringSelectMenuBuilder, ActionRowBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -19,13 +20,15 @@ export async function execute(interaction, musicPlayer) {
     return;
   }
 
+  const lang = await resolveUserLanguage(interaction.user.id);
+
   const query = interaction.options.getString('曲名');
   const member = interaction.member;
 
   // ボイスチャンネルチェック（即座に実行）
   if (!member.voice.channel) {
     try {
-      return await interaction.editReply('❌ ボイスチャンネルに参加してください');
+      return await interaction.editReply(translate(lang, 'music.joinPrompt'));
     } catch (error) {
       log(`editReply エラー: ${error.message}`, 'error');
       return;
@@ -46,11 +49,12 @@ export async function execute(interaction, musicPlayer) {
       result = await Promise.race([searchPromise, timeoutPromise]);
     } catch (searchError) {
       log(`検索エラー: ${searchError.message}`, 'error');
-      return await interaction.editReply('❌ 検索中にエラーが発生しました。もう一度お試しください。');
+      return await interaction.editReply(translate(lang, 'music.searchFailed'));
     }
 
     if (!result.success || !result.tracks || result.tracks.length === 0) {
-      const errorMsg = result.error || '曲が見つかりませんでした。別のキーワードで試してください。';
+      const fallback = translate(lang, 'music.trackNotFound');
+      const errorMsg = result.error || fallback.replace(/^❌\s*/, '');
       return await interaction.editReply(`❌ ${errorMsg}`);
     }
 
@@ -71,11 +75,15 @@ export async function execute(interaction, musicPlayer) {
             log(`RestError body: ${JSON.stringify(playError.body)}`, 'error');
           }
           
-          return await interaction.editReply(`❌ 再生開始に失敗しました: ${playError.message}`);
+          return await interaction.editReply(
+            translate(lang, 'music.queueAddFailed', { error: playError.message })
+          );
         }
       }
 
-      return await interaction.editReply(`✅ キューに追加: **${result.tracks[0].info?.title || 'Unknown'}**`);
+      return await interaction.editReply(
+        translate(lang, 'music.queued', { title: result.tracks[0].info?.title || 'Unknown' })
+      );
     }
 
     // 検索結果をSelect Menuで表示
@@ -87,16 +95,21 @@ export async function execute(interaction, musicPlayer) {
 
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId(`select_track_${interaction.user.id}`)
-      .setPlaceholder('再生する曲を選択してください')
+      .setPlaceholder(translate(lang, 'music.selectPrompt'))
       .addOptions(options);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
     const embed = new EmbedBuilder()
       .setColor('#5865F2')
-      .setTitle('🔍 検索結果')
-      .setDescription(`**${query}** の検索結果 (${result.tracks.length}件)`)
-      .setFooter({ text: '下のメニューから曲を選択してください' });
+      .setTitle(translate(lang, 'music.searchTitle'))
+      .setDescription(
+        translate(lang, 'music.searchDescription', {
+          query,
+          count: result.tracks.length
+        })
+      )
+      .setFooter({ text: translate(lang, 'music.selectFooter') });
 
     const response = await interaction.editReply({
       embeds: [embed],
@@ -113,7 +126,7 @@ export async function execute(interaction, musicPlayer) {
       try {
         // 【最重要】真っ先に i.update を実行してタイムアウトを防止
         await i.update({
-          content: '✅ キューに追加中...',
+          content: translate(lang, 'music.queueing'),
           embeds: [],
           components: []
         });
@@ -127,7 +140,9 @@ export async function execute(interaction, musicPlayer) {
 
         // 追加完了メッセージに更新
         await interaction.editReply({
-          content: `✅ キューに追加: **${selectedTrack.info?.title || 'Unknown'}**`,
+          content: translate(lang, 'music.queued', {
+            title: selectedTrack.info?.title || 'Unknown'
+          }),
           embeds: [],
           components: []
         });
@@ -146,7 +161,9 @@ export async function execute(interaction, musicPlayer) {
             
             // 再生エラーは別途通知
             await interaction.followUp({
-              content: `❌ 再生開始に失敗しました: ${playError.message}`,
+              content: translate(lang, 'music.playStartFailed', {
+                error: playError.message
+              }),
               flags: [MessageFlags.Ephemeral]
             }).catch(() => {});
           }
@@ -160,7 +177,7 @@ export async function execute(interaction, musicPlayer) {
         // エラー時も適切に応答
         try {
           await interaction.editReply({
-            content: '❌ 曲の追加中にエラーが発生しました',
+            content: translate(lang, 'music.trackAddFailed'),
             embeds: [],
             components: []
           });
@@ -173,7 +190,7 @@ export async function execute(interaction, musicPlayer) {
     collector.on('end', (collected, reason) => {
       if (reason === 'time') {
         interaction.editReply({
-          content: '⏱️ 選択がタイムアウトしました',
+          content: translate(lang, 'music.selectTimeout'),
           embeds: [],
           components: []
         }).catch(error => log(`タイムアウト通知エラー: ${error.message}`, 'error'));
@@ -184,7 +201,7 @@ export async function execute(interaction, musicPlayer) {
     log(`エラースタック: ${error.stack}`, 'error');
     
     try {
-      await interaction.editReply('❌ 検索中にエラーが発生しました。もう一度お試しください。');
+      await interaction.editReply(translate(lang, 'music.searchFailed'));
     } catch (replyError) {
       log(`エラー応答の送信に失敗: ${replyError.message}`, 'error');
     }

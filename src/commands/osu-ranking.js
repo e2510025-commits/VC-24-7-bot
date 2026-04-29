@@ -12,6 +12,7 @@ import {
   getStatsValue,
   metricLabel
 } from '../utils/osuGrowthUtils.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const PERIOD_CHOICES = [
@@ -74,10 +75,11 @@ function resolveMetricPair(metric, stats, snapshot) {
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     if (!interaction.guild) {
-      return interaction.editReply('❌ サーバー内で実行してください');
+      return interaction.editReply(translate(lang, 'common.guildOnly'));
     }
 
     const periodKey = interaction.options.getString('period') || '1week';
@@ -87,12 +89,12 @@ export async function execute(interaction) {
 
     const period = PERIOD_MAP[periodKey];
     if (!period) {
-      return interaction.editReply('❌ 期間の指定が不正です');
+      return interaction.editReply(translate(lang, 'osu.ranking.invalidPeriod'));
     }
 
     const allLinks = await listLinkedOsuUsers();
     if (allLinks.length === 0) {
-      return interaction.editReply('❌ 連携済みユーザーが見つかりませんでした');
+      return interaction.editReply(translate(lang, 'osu.ranking.noLinks'));
     }
 
     const guildLinks = [];
@@ -106,7 +108,7 @@ export async function execute(interaction) {
     }
 
     if (guildLinks.length === 0) {
-      return interaction.editReply('❌ このサーバーに連携済みユーザーがいません');
+      return interaction.editReply(translate(lang, 'osu.ranking.noGuildLinks'));
     }
 
     const cutoffDate = new Date(Date.now() - period.ms);
@@ -167,7 +169,7 @@ export async function execute(interaction) {
       .slice(0, topCount);
 
     if (sorted.length === 0) {
-      return interaction.editReply('❌ 比較可能なデータが不足しています。しばらく経ってから再実行してください');
+      return interaction.editReply(translate(lang, 'osu.ranking.noData'));
     }
 
     const embed = new EmbedBuilder()
@@ -189,6 +191,6 @@ export async function execute(interaction) {
   } catch (error) {
     log(`/osu-ranking エラー: ${error.message}`, 'error');
     log(`エラースタック: ${error.stack}`, 'error');
-    return interaction.editReply('❌ ランキング集計中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.ranking.failed'));
   }
 }

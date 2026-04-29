@@ -2,6 +2,7 @@ import { MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { upsertUserLink } from '../database/supabase.js';
 import { upsertTrackedOsuUser } from '../database/osuTrackedUsers.js';
 import { OsuApiError, fetchOsuUser } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -16,10 +17,11 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   const username = interaction.options.getString('username', true).trim();
   if (!username) {
-    return interaction.editReply('❌ osu!ユーザー名を入力してください');
+    return interaction.editReply(translate(lang, 'osuLink.needUsername'));
   }
 
   try {
@@ -32,7 +34,7 @@ export async function execute(interaction) {
     });
 
     await interaction.editReply(
-      `✅ Discordアカウントと osu! ユーザー **${user.username}** を連携しました`
+      translate(lang, 'osuLink.success', { username: user.username })
     );
   } catch (error) {
     log(`/osu-link エラー: ${error.message}`, 'error');
@@ -43,6 +45,8 @@ export async function execute(interaction) {
     }
 
     const dbError = error?.message ? `: ${error.message}` : '';
-    return interaction.editReply(`❌ 連携情報の保存に失敗しました${dbError}`);
+    return interaction.editReply(
+      translate(lang, 'osuLink.saveFailed', { error: dbError })
+    );
   }
 }

@@ -8,6 +8,7 @@ import {
   getModeLabel,
   normalizeOsuMode
 } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const MODES = ['osu', 'taiko', 'fruits', 'mania'];
@@ -74,12 +75,13 @@ function formatRankDelta(previousRank, currentRank) {
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
       return interaction.editReply(
-        '❌ ユーザー名を指定するか、先に /osu-link username:<osu名> で連携してください'
+        translate(lang, 'osu.requireLink')
       );
     }
 
@@ -153,6 +155,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ ダッシュボード取得中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.dashboardFailed'));
   }
 }

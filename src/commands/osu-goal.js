@@ -9,6 +9,7 @@ import {
   goalProgress,
   metricLabel
 } from '../utils/osuGrowthUtils.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 function getMetricCurrentValue(metric, stats) {
@@ -146,6 +147,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const subcommand = interaction.options.getSubcommand();
@@ -159,7 +161,7 @@ export async function execute(interaction) {
 
       if (!targetUsername) {
         return interaction.editReply(
-          '❌ ユーザー名を指定するか、先に /osu-link username:<osu名> で連携してください'
+          translate(lang, 'osu.requireLink')
         );
       }
 
@@ -168,7 +170,7 @@ export async function execute(interaction) {
       const baseline = getMetricCurrentValue(metric, stats);
 
       if (!Number.isFinite(baseline)) {
-        return interaction.editReply('❌ 現在値を取得できないため目標設定できませんでした');
+        return interaction.editReply(translate(lang, 'osu.goal.noBaseline'));
       }
 
       const goal = await upsertActiveGoal({
@@ -214,7 +216,7 @@ export async function execute(interaction) {
       const goals = await listActiveGoals(interaction.user.id, mode);
 
       if (goals.length === 0) {
-        return interaction.editReply('❌ 有効な目標がありません。/osu-goal set で設定してください');
+        return interaction.editReply(translate(lang, 'osu.goal.noActive'));
       }
 
       const lines = [];
@@ -264,10 +266,10 @@ export async function execute(interaction) {
       const cleared = await clearActiveGoals(interaction.user.id, mode, metric);
 
       if (cleared === 0) {
-        return interaction.editReply('❌ 解除対象の目標がありませんでした');
+        return interaction.editReply(translate(lang, 'osu.goal.noClear'));
       }
 
-      return interaction.editReply(`✅ ${cleared}件の目標を解除しました`);
+      return interaction.editReply(translate(lang, 'osu.goal.cleared', { count: cleared }));
     }
 
     return interaction.editReply('❌ 不明なサブコマンドです');
@@ -279,6 +281,8 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply(`❌ 目標処理中にエラーが発生しました: ${error.message}`);
+    return interaction.editReply(
+      translate(lang, 'osu.goal.failed', { error: error.message })
+    );
   }
 }

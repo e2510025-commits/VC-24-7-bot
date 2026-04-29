@@ -9,6 +9,7 @@ import {
   getModeLabel,
   normalizeOsuMode
 } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 function toNumber(value) {
@@ -160,6 +161,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const mode = normalizeOsuMode(interaction.options.getString('mode') || 'osu');
@@ -169,7 +171,7 @@ export async function execute(interaction) {
 
     if (!targetUsername) {
       return interaction.editReply(
-        '❌ ユーザー名を指定するか、先に /osu-link username:<osu名> で連携してください'
+        translate(lang, 'osu.requireLink')
       );
     }
 
@@ -177,7 +179,7 @@ export async function execute(interaction) {
     const scores = await fetchRecentScores(user.id, mode, limit);
 
     if (!Array.isArray(scores) || scores.length === 0) {
-      return interaction.editReply('❌ 分析対象のプレイが見つかりませんでした');
+      return interaction.editReply(translate(lang, 'osu.analysis.noScores'));
     }
 
     const successful = scores.filter(score => score?.passed);
@@ -301,6 +303,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ 品質分析中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.analysis.failed'));
   }
 }

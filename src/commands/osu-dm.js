@@ -6,6 +6,7 @@ import {
   upsertTrackedOsuUser
 } from '../database/osuTrackedUsers.js';
 import { OsuApiError, fetchOsuUser } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -41,6 +42,7 @@ async function ensureTrackedUser(discordId) {
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const discordId = interaction.user.id;
@@ -48,25 +50,29 @@ export async function execute(interaction) {
     const tracked = await ensureTrackedUser(discordId);
 
     if (!tracked) {
-      return interaction.editReply(
-        '❌ 先に /osu-link username:<osu名> で連携してください'
-      );
+      return interaction.editReply(translate(lang, 'osu.dmNeedLink'));
     }
 
     if (enable === null) {
       const isEnabled = Boolean(tracked.daily_dm_history_enabled);
       return interaction.editReply(
-        `ℹ️ 日次DM設定: ${isEnabled ? 'ON' : 'OFF'}\n対象ユーザー: ${tracked.osu_username}`
+        translate(lang, 'osu.dmStatus', {
+          status: isEnabled ? 'ON' : 'OFF',
+          username: tracked.osu_username
+        })
       );
     }
 
     const updated = await setTrackedUserDailyDmHistoryEnabled(discordId, enable);
     if (!updated) {
-      return interaction.editReply('❌ 設定更新に失敗しました');
+      return interaction.editReply(translate(lang, 'osu.dmUpdateFailed'));
     }
 
     return interaction.editReply(
-      `✅ 日次プレイ履歴DMを ${enable ? 'ON' : 'OFF'} にしました\n対象ユーザー: ${updated.osu_username}`
+      translate(lang, 'osu.dmUpdated', {
+        status: enable ? 'ON' : 'OFF',
+        username: updated.osu_username
+      })
     );
   } catch (error) {
     log(`/osu-dm エラー: ${error.message}`, 'error');
@@ -76,6 +82,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ DM設定更新中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.dmUpdateFailed'));
   }
 }

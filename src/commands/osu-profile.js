@@ -8,6 +8,7 @@ import {
   formatPercent,
   formatPlayTime
 } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 export const data = new SlashCommandBuilder()
@@ -43,6 +44,7 @@ async function resolveTargetUsername(interaction) {
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const mode = interaction.options.getString('mode') || 'osu';
@@ -50,7 +52,7 @@ export async function execute(interaction) {
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
       return interaction.editReply(
-        '❌ ユーザー名を指定するか、先に `/osu-link username:<osu名>` で連携してください'
+        translate(lang, 'osu.requireLink')
       );
     }
 
@@ -140,6 +142,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ プロフィール取得中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.profileFailed'));
   }
 }

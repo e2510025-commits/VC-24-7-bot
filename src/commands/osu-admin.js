@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } from 'discord.js';
 import { getGuildOsuSettings, upsertGuildOsuSettings } from '../database/osuGuildSettings.js';
 import { metricLabel } from '../utils/osuGrowthUtils.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const WEEKDAY_CHOICES = [
@@ -175,14 +176,15 @@ export { data };
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     if (!interaction.guildId) {
-      return interaction.editReply('❌ サーバー内で実行してください');
+      return interaction.editReply(translate(lang, 'common.guildOnly'));
     }
 
     if (!requireAdmin(interaction)) {
-      return interaction.editReply('❌ このコマンドはサーバー管理者のみ実行できます');
+      return interaction.editReply(translate(lang, 'common.adminOnly'));
     }
 
     const subcommand = interaction.options.getSubcommand();
@@ -235,7 +237,7 @@ export async function execute(interaction) {
       const channel = interaction.options.getChannel('channel', true);
 
       if (!channel.isTextBased()) {
-        return interaction.editReply('❌ テキストチャンネルを指定してください');
+        return interaction.editReply(translate(lang, 'osuAdmin.channelNotText'));
       }
 
       let patch;
@@ -254,11 +256,16 @@ export async function execute(interaction) {
         patch = { daily_history_channel_id: channel.id };
         typeName = '日次プレイ履歴';
       } else {
-        return interaction.editReply('❌ 不明なチャンネルタイプです');
+        return interaction.editReply(translate(lang, 'osuAdmin.channelTypeUnknown'));
       }
 
       await upsertGuildOsuSettings(guildId, patch);
-      return interaction.editReply(`✅ ${typeName}の通知先を ${channel} に設定しました`);
+      return interaction.editReply(
+        translate(lang, 'osuAdmin.channelSet', {
+          typeName,
+          channel: `${channel}`
+        })
+      );
     }
 
     if (subcommand === 'set-threshold') {
@@ -266,7 +273,7 @@ export async function execute(interaction) {
       const rank = interaction.options.getInteger('rank');
 
       if (pp === null && rank === null) {
-        return interaction.editReply('❌ pp か rank のどちらかを指定してください');
+        return interaction.editReply(translate(lang, 'osuAdmin.thresholdNeed'));
       }
 
       const patch = {};
@@ -274,13 +281,15 @@ export async function execute(interaction) {
       if (rank !== null) patch.alert_rank_threshold = rank;
 
       await upsertGuildOsuSettings(guildId, patch);
-      return interaction.editReply('✅ 閾値を更新しました');
+      return interaction.editReply(translate(lang, 'osuAdmin.thresholdUpdated'));
     }
 
     if (subcommand === 'set-snapshot') {
       const minutes = interaction.options.getInteger('minutes', true);
       await upsertGuildOsuSettings(guildId, { snapshot_interval_minutes: minutes });
-      return interaction.editReply(`✅ スナップショット間隔を ${minutes} 分に更新しました`);
+      return interaction.editReply(
+        translate(lang, 'osuAdmin.snapshotUpdated', { minutes })
+      );
     }
 
     if (subcommand === 'set-report') {
@@ -298,11 +307,11 @@ export async function execute(interaction) {
       if (top !== null) patch.report_top = top;
 
       if (Object.keys(patch).length === 0) {
-        return interaction.editReply('❌ 変更する項目を1つ以上指定してください');
+        return interaction.editReply(translate(lang, 'osuAdmin.noChange'));
       }
 
       await upsertGuildOsuSettings(guildId, patch);
-      return interaction.editReply('✅ 週次レポート設定を更新しました');
+      return interaction.editReply(translate(lang, 'osuAdmin.reportUpdated'));
     }
 
     if (subcommand === 'set-role') {
@@ -312,16 +321,20 @@ export async function execute(interaction) {
       });
 
       if (role) {
-        return interaction.editReply(`✅ 重要更新メンションロールを ${role} に設定しました`);
+        return interaction.editReply(
+          translate(lang, 'osuAdmin.roleSet', { role: `${role}` })
+        );
       }
 
-      return interaction.editReply('✅ 重要更新メンションロールを解除しました');
+      return interaction.editReply(translate(lang, 'osuAdmin.roleCleared'));
     }
 
-    return interaction.editReply('❌ 不明なサブコマンドです');
+    return interaction.editReply(translate(lang, 'common.unknownSubcommand'));
   } catch (error) {
     log(`/osu-admin エラー: ${error.message}`, 'error');
     log(`エラースタック: ${error.stack}`, 'error');
-    return interaction.editReply(`❌ 設定更新中にエラーが発生しました: ${error.message}`);
+    return interaction.editReply(
+      translate(lang, 'osuAdmin.failed', { error: error.message })
+    );
   }
 }

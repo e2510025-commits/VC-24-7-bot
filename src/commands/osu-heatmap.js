@@ -8,6 +8,7 @@ import {
   normalizeOsuMode,
   toDiscordTimestamp
 } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const SPAN_CHOICES = [
@@ -102,12 +103,13 @@ function buildHeatmapText(matrix) {
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
       return interaction.editReply(
-        '❌ ユーザー名を指定するか、先に /osu-link username:<osu名> で連携してください'
+        translate(lang, 'osu.requireLink')
       );
     }
 
@@ -126,7 +128,7 @@ export async function execute(interaction) {
 
     if (events.length === 0) {
       return interaction.editReply(
-        `❌ ${lookbackDays}日以内のベスト更新履歴がありません。スケジューラ稼働後に再実行してください`
+        translate(lang, 'osu.heatmap.noEvents', { days: lookbackDays })
       );
     }
 
@@ -191,6 +193,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ ヒートマップ生成中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.heatmap.failed'));
   }
 }

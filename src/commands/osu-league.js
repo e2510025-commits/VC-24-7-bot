@@ -9,6 +9,7 @@ import {
   normalizeOsuMode
 } from '../utils/osuApi.js';
 import { PERIOD_MAP } from '../utils/osuGrowthUtils.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const PERIOD_CHOICES = [
@@ -71,10 +72,11 @@ function uniqueActiveDays(snapshots) {
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     if (!interaction.guild) {
-      return interaction.editReply('❌ サーバー内で実行してください');
+      return interaction.editReply(translate(lang, 'common.guildOnly'));
     }
 
     const periodKey = interaction.options.getString('period') || '1week';
@@ -84,7 +86,7 @@ export async function execute(interaction) {
 
     const allLinks = await listLinkedOsuUsers();
     if (allLinks.length === 0) {
-      return interaction.editReply('❌ 連携済みユーザーが見つかりませんでした');
+      return interaction.editReply(translate(lang, 'osu.league.noLinks'));
     }
 
     const guildLinks = [];
@@ -98,7 +100,7 @@ export async function execute(interaction) {
     }
 
     if (guildLinks.length === 0) {
-      return interaction.editReply('❌ このサーバーに連携済みユーザーがいません');
+      return interaction.editReply(translate(lang, 'osu.league.noGuildLinks'));
     }
 
     const cutoffDate = new Date(Date.now() - period.ms);
@@ -192,7 +194,7 @@ export async function execute(interaction) {
       .slice(0, topCount);
 
     if (sorted.length === 0) {
-      return interaction.editReply('❌ 集計可能なデータが不足しています。しばらく経ってから再実行してください');
+      return interaction.editReply(translate(lang, 'osu.league.noData'));
     }
 
     const embed = new EmbedBuilder()
@@ -220,6 +222,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ リーグ集計中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.league.failed'));
   }
 }

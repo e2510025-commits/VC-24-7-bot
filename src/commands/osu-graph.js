@@ -9,6 +9,7 @@ import {
   getModeLabel,
   normalizeOsuMode
 } from '../utils/osuApi.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import {
   GRAPH_METRICS,
   PERIOD_MAP,
@@ -1178,6 +1179,7 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   await interaction.deferReply();
+  const lang = await resolveUserLanguage(interaction.user.id);
 
   try {
     const mode = normalizeOsuMode(interaction.options.getString('mode') || 'osu');
@@ -1328,9 +1330,7 @@ export async function execute(interaction) {
     // 単一ユーザーモード（既存の処理）
     const targetUsername = await resolveTargetUsername(interaction);
     if (!targetUsername) {
-      return interaction.editReply(
-        '❌ ユーザー名を指定するか、先に /osu-link username:<osu名> で連携してください'
-      );
+        return interaction.editReply(translate(lang, 'osu.requireLink'));
     }
 
     const user = await fetchOsuUser(targetUsername, mode);
@@ -1631,6 +1631,6 @@ export async function execute(interaction) {
       return interaction.editReply(`❌ ${error.message}`);
     }
 
-    return interaction.editReply('❌ グラフ生成中にエラーが発生しました');
+    return interaction.editReply(translate(lang, 'osu.graph.failed'));
   }
 }
