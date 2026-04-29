@@ -2,13 +2,12 @@ import {
   ActionRowBuilder,
   ModalBuilder,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
   MessageFlags
 } from 'discord.js';
 import { getAuthSettings } from '../database/authSettings.js';
-import { getLinkedOsuUsername } from '../database/supabase.js';
-import { OsuApiError, fetchOsuUser } from '../utils/osuApi.js';
 import { resolveUserLanguage, translate, translateAll } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
@@ -20,12 +19,12 @@ const AUTH_QUESTIONS = [
   { id: 'q5', text: '3 + 4 = ?', answer: 7 }
 ];
 
-const MODE_ROLE_MAP = {
-  osu: 'std',
-  mania: 'mania',
-  taiko: 'taiko',
-  fruits: 'catch'
-};
+const MODE_ROLE_OPTIONS = [
+  { label: 'std', value: 'std' },
+  { label: 'mania', value: 'mania' },
+  { label: 'taiko', value: 'taiko' },
+  { label: 'catch', value: 'catch' }
+];
 
 function pickQuestion() {
   const index = Math.floor(Math.random() * AUTH_QUESTIONS.length);
@@ -39,58 +38,15 @@ function isManageableRole(role, botMember) {
   return role.position < botMember.roles.highest.position;
 }
 
-async function assignModeRoles(interaction) {
-  if (!interaction.guildId) {
-    return;
-  }
+function buildModeRoleRow(userId, lang) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`auth-mode-roles:${userId}`)
+    .setPlaceholder(translate(lang, 'auth.modePrompt'))
+    .setMinValues(0)
+    .setMaxValues(MODE_ROLE_OPTIONS.length)
+    .addOptions(MODE_ROLE_OPTIONS);
 
-  const linkedUsername = await getLinkedOsuUsername(interaction.user.id).catch(() => null);
-  if (!linkedUsername) {
-    return;
-  }
-
-  const member = interaction.member;
-  if (!member || !('roles' in member)) {
-    return;
-  }
-
-  const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-  if (!botMember) {
-    return;
-  }
-
-  const modes = ['osu', 'mania', 'taiko', 'fruits'];
-
-  for (const mode of modes) {
-    try {
-      const user = await fetchOsuUser(linkedUsername, mode);
-      const stats = user.statistics || {};
-      const playCount = Number(stats.play_count || 0);
-      const pp = Number(stats.pp || 0);
-
-      if (playCount <= 0 && pp <= 0) {
-        continue;
-      }
-
-      const roleName = MODE_ROLE_MAP[mode];
-      if (!roleName) {
-        continue;
-      }
-
-      const role = interaction.guild.roles.cache.find(item => item.name === roleName);
-      if (!isManageableRole(role, botMember)) {
-        continue;
-      }
-
-      if (!member.roles.cache.has(role.id)) {
-        await member.roles.add(role).catch(() => null);
-      }
-    } catch (error) {
-      if (!(error instanceof OsuApiError)) {
-        log(`認証モードロール付与失敗: ${linkedUsername} [${mode}] - ${error.message}`, 'error');
-      }
-    }
-  }
+  return new ActionRowBuilder().addComponents(menu);
 }
 
 export const data = new SlashCommandBuilder()
@@ -227,11 +183,18 @@ export async function handleAuthModalSubmit(interaction) {
     }
 
     await member.roles.add(role);
-    await assignModeRoles(interaction);
-    return interaction.reply({
+    await interaction.reply({
       content: translateAll('auth.success', { role: `${role}` }),
       flags: [MessageFlags.Ephemeral]
     });
+
+    const row = buildModeRoleRow(interaction.user.id, lang);
+    await interaction.followUp({
+      content: translate(lang, 'auth.modePrompt'),
+      components: [row],
+      flags: [MessageFlags.Ephemeral]
+    });
+    return null;
   } catch (error) {
     log(`/auth モーダル処理エラー: ${error.message}`, 'error');
     return interaction.reply({
@@ -239,4 +202,81 @@ export async function handleAuthModalSubmit(interaction) {
       flags: [MessageFlags.Ephemeral]
     });
   }
+}
+
+export async function handleModeRoleSelect(interaction) {
+  const lang = await resolveUserLanguage(interaction.user.id);
+  const [, targetUserId] = interaction.customId.split(':');
+
+  if (targetUserId && targetUserId !== interaction.user.id) {
+    return interaction.reply({
+      content: translate(lang, 'auth.modeUnauthorized'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  if (!interaction.guildId) {
+    return interaction.reply({
+      content: translate(lang, 'common.guildOnly'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const member = interaction.member;
+  if (!member || !('roles' in member)) {
+    return interaction.reply({
+      content: translate(lang, 'auth.memberMissing'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+  if (!botMember) {
+    return interaction.reply({
+      content: translate(lang, 'auth.roleNotManageable'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const selections = Array.isArray(interaction.values) ? interaction.values : [];
+  const roleMap = new Map();
+
+  for (const option of MODE_ROLE_OPTIONS) {
+    const role = interaction.guild.roles.cache.find(item => item.name === option.value);
+    if (role) {
+      roleMap.set(option.value, role);
+    }
+  }
+
+  const manageableRoles = [...roleMap.values()].filter(role => isManageableRole(role, botMember));
+  const manageableIds = manageableRoles.map(role => role.id);
+  const selectedRoles = selections
+    .map(value => roleMap.get(value))
+    .filter(role => isManageableRole(role, botMember));
+
+  const selectedIds = new Set(selectedRoles.map(role => role.id));
+  const removeIds = manageableIds.filter(id => !selectedIds.has(id) && member.roles.cache.has(id));
+
+  if (removeIds.length > 0) {
+    await member.roles.remove(removeIds).catch(() => null);
+  }
+
+  const addRoles = selectedRoles.filter(role => !member.roles.cache.has(role.id));
+  if (addRoles.length > 0) {
+    await member.roles.add(addRoles).catch(() => null);
+  }
+
+  if (selectedRoles.length === 0) {
+    return interaction.reply({
+      content: translate(lang, 'auth.modeCleared'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  return interaction.reply({
+    content: translate(lang, 'auth.modeUpdated', {
+      roles: selectedRoles.map(role => role.name).join(', ')
+    }),
+    flags: [MessageFlags.Ephemeral]
+  });
 }

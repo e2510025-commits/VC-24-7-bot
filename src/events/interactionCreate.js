@@ -1,6 +1,6 @@
 import { createMusicPanel } from '../music/panel.js';
 import { MessageFlags } from 'discord.js';
-import { handleAuthModalSubmit, showAuthModal } from '../commands/auth.js';
+import { handleAuthModalSubmit, handleModeRoleSelect, showAuthModal } from '../commands/auth.js';
 import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
@@ -139,6 +139,13 @@ export async function execute(interaction, client) {
       } catch (replyError) {
         log(`エラー応答の送信に失敗: ${replyError.message}`, 'error');
       }
+    }
+  }
+
+  // セレクトメニュー処理
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId.startsWith('auth-mode-roles:')) {
+      await handleModeRoleSelect(interaction);
     }
   }
 
