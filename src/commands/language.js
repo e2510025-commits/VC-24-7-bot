@@ -5,8 +5,7 @@ import { log } from '../utils/logger.js';
 
 const LANGUAGE_CHOICES = [
   { name: '日本語', value: 'ja' },
-  { name: 'English', value: 'en' },
-  { name: '한국어', value: 'ko' }
+  { name: 'English', value: 'en' }
 ];
 
 export const data = new SlashCommandBuilder()

@@ -8,6 +8,7 @@ import {
   MessageFlags
 } from 'discord.js';
 import { getAuthSettings } from '../database/authSettings.js';
+import { setUserLanguage } from '../database/userSettings.js';
 import { resolveUserLanguage, translate, translateAll } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
@@ -24,6 +25,16 @@ const MODE_ROLE_OPTIONS = [
   { label: 'mania', value: 'mania' },
   { label: 'taiko', value: 'taiko' },
   { label: 'catch', value: 'catch' }
+];
+
+const LANGUAGE_ROLE_OPTIONS = [
+  { label: 'Japan', value: 'Japan' },
+  { label: 'America', value: 'America' },
+  { label: 'Russia', value: 'Russia' },
+  { label: 'Korea', value: 'Korea' },
+  { label: 'Brazil', value: 'Brazil' },
+  { label: 'Germany', value: 'Germany' },
+  { label: 'Other', value: 'Other' }
 ];
 
 function pickQuestion() {
@@ -45,6 +56,17 @@ function buildModeRoleRow(userId, lang) {
     .setMinValues(0)
     .setMaxValues(MODE_ROLE_OPTIONS.length)
     .addOptions(MODE_ROLE_OPTIONS);
+
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildLanguageRoleRow(userId, lang) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`auth-lang-role:${userId}`)
+    .setPlaceholder(translate(lang, 'auth.langPrompt'))
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(LANGUAGE_ROLE_OPTIONS);
 
   return new ActionRowBuilder().addComponents(menu);
 }
@@ -188,10 +210,11 @@ export async function handleAuthModalSubmit(interaction) {
       flags: [MessageFlags.Ephemeral]
     });
 
-    const row = buildModeRoleRow(interaction.user.id, lang);
+    const modeRow = buildModeRoleRow(interaction.user.id, lang);
+    const langRow = buildLanguageRoleRow(interaction.user.id, lang);
     await interaction.followUp({
-      content: translate(lang, 'auth.modePrompt'),
-      components: [row],
+      content: `${translate(lang, 'auth.modePrompt')}\n${translate(lang, 'auth.langPrompt')}`,
+      components: [modeRow, langRow],
       flags: [MessageFlags.Ephemeral]
     });
     return null;
@@ -277,6 +300,85 @@ export async function handleModeRoleSelect(interaction) {
     content: translate(lang, 'auth.modeUpdated', {
       roles: selectedRoles.map(role => role.name).join(', ')
     }),
+    flags: [MessageFlags.Ephemeral]
+  });
+}
+
+export async function handleLanguageRoleSelect(interaction) {
+  const lang = await resolveUserLanguage(interaction.user.id);
+  const [, targetUserId] = interaction.customId.split(':');
+
+  if (targetUserId && targetUserId !== interaction.user.id) {
+    return interaction.reply({
+      content: translate(lang, 'auth.langUnauthorized'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  if (!interaction.guildId) {
+    return interaction.reply({
+      content: translate(lang, 'common.guildOnly'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const member = interaction.member;
+  if (!member || !('roles' in member)) {
+    return interaction.reply({
+      content: translate(lang, 'auth.memberMissing'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+  if (!botMember) {
+    return interaction.reply({
+      content: translate(lang, 'auth.roleNotManageable'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const selected = interaction.values?.[0];
+  if (!selected) {
+    return interaction.reply({
+      content: translate(lang, 'auth.langCleared'),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  const roleMap = new Map();
+  for (const option of LANGUAGE_ROLE_OPTIONS) {
+    const role = interaction.guild.roles.cache.find(item => item.name === option.value);
+    if (role) {
+      roleMap.set(option.value, role);
+    }
+  }
+
+  const manageableRoles = [...roleMap.values()].filter(role => isManageableRole(role, botMember));
+  const manageableIds = manageableRoles.map(role => role.id);
+  const selectedRole = roleMap.get(selected);
+
+  const removeIds = manageableIds.filter(id => member.roles.cache.has(id));
+  if (removeIds.length > 0) {
+    await member.roles.remove(removeIds).catch(() => null);
+  }
+
+  if (selectedRole && isManageableRole(selectedRole, botMember)) {
+    if (!member.roles.cache.has(selectedRole.id)) {
+      await member.roles.add(selectedRole).catch(() => null);
+    }
+
+    const language = selectedRole.name === 'Japan' ? 'ja' : 'en';
+    await setUserLanguage(interaction.user.id, language).catch(() => null);
+
+    return interaction.reply({
+      content: translate(lang, 'auth.langUpdated', { role: selectedRole.name }),
+      flags: [MessageFlags.Ephemeral]
+    });
+  }
+
+  return interaction.reply({
+    content: translate(lang, 'auth.langCleared'),
     flags: [MessageFlags.Ephemeral]
   });
 }

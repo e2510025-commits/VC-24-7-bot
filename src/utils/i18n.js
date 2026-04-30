@@ -101,6 +101,10 @@ const MESSAGES = {
     'auth.modeUpdated': '✅ モードロールを更新しました: {roles}',
     'auth.modeCleared': '✅ モードロールを解除しました',
     'auth.modeUnauthorized': '❌ この選択はあなた専用です',
+    'auth.langPrompt': '付与したい言語ロールを選択してください（1つ）',
+    'auth.langUpdated': '✅ 言語ロールを更新しました: {role}',
+    'auth.langCleared': '✅ 言語ロールを解除しました',
+    'auth.langUnauthorized': '❌ この選択はあなた専用です',
     'auth.failed': '❌ 認証処理でエラーが発生しました',
     'auth.assignFailed': '❌ 認証ロールの付与に失敗しました。',
     'authAdmin.roleSet': '✅ 認証ロールを {role} に設定しました',
@@ -208,6 +212,10 @@ const MESSAGES = {
     'auth.modeUpdated': '✅ Mode roles updated: {roles}',
     'auth.modeCleared': '✅ Mode roles cleared.',
     'auth.modeUnauthorized': '❌ This selection is only for you.',
+    'auth.langPrompt': 'Select a language role (one).',
+    'auth.langUpdated': '✅ Language role updated: {role}',
+    'auth.langCleared': '✅ Language role cleared.',
+    'auth.langUnauthorized': '❌ This selection is only for you.',
     'auth.failed': '❌ An error occurred during verification.',
     'auth.assignFailed': '❌ Failed to assign the verification role.',
     'authAdmin.roleSet': '✅ Verification role set to {role}.',
@@ -315,6 +323,10 @@ const MESSAGES = {
     'auth.modeUpdated': '✅ 모드 역할을 업데이트했습니다: {roles}',
     'auth.modeCleared': '✅ 모드 역할을 해제했습니다.',
     'auth.modeUnauthorized': '❌ 이 선택은 본인만 사용할 수 있습니다.',
+    'auth.langPrompt': '원하는 언어 역할을 선택해 주세요 (1개).',
+    'auth.langUpdated': '✅ 언어 역할을 업데이트했습니다: {role}',
+    'auth.langCleared': '✅ 언어 역할을 해제했습니다.',
+    'auth.langUnauthorized': '❌ 이 선택은 본인만 사용할 수 있습니다.',
     'auth.failed': '❌ 인증 처리 중 오류가 발생했습니다.',
     'auth.assignFailed': '❌ 인증 역할 부여에 실패했습니다.',
     'authAdmin.roleSet': '✅ 인증 역할을 {role}(으)로 설정했습니다.',
@@ -355,7 +367,6 @@ export function translate(language, key, params = {}) {
 export function translateAll(key, params = {}) {
   return [
     `日本語: ${translate('ja', key, params)}`,
-    `English: ${translate('en', key, params)}`,
-    `한국어: ${translate('ko', key, params)}`
+    `English: ${translate('en', key, params)}`
   ].join('\n');
 }

@@ -1,6 +1,6 @@
 import { createMusicPanel } from '../music/panel.js';
 import { MessageFlags } from 'discord.js';
-import { handleAuthModalSubmit, handleModeRoleSelect, showAuthModal } from '../commands/auth.js';
+import { handleAuthModalSubmit, handleLanguageRoleSelect, handleModeRoleSelect, showAuthModal } from '../commands/auth.js';
 import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
@@ -146,6 +146,11 @@ export async function execute(interaction, client) {
   if (interaction.isStringSelectMenu()) {
     if (interaction.customId.startsWith('auth-mode-roles:')) {
       await handleModeRoleSelect(interaction);
+      return;
+    }
+
+    if (interaction.customId.startsWith('auth-lang-role:')) {
+      await handleLanguageRoleSelect(interaction);
     }
   }
 
