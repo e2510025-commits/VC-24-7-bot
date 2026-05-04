@@ -1,51 +1,68 @@
-# Discord 音楽＆通話記録Bot + Webダッシュボード
+# VC 24/7 Bot + Dashboard
 
-Discord.js v14とLavalinkを使用した音楽再生Bot、およびNext.jsで構築された通話記録ダッシュボードのシステムです。
+Discord.js v14のボットとNext.jsのダッシュボードをまとめた構成です。音楽再生、VC滞在、osu!関連機能、通話ログ表示を扱います。
 
-## 📋 機能
+## 機能
 
 ### Discord Bot
-- 🎵 24時間VC滞在機能
-- 🎶 Lavalink経由の音楽再生
-- 🔍 `/play`コマンドで検索・選曲（Select Menu）
-- 🎛️ Embed操作パネル（スキップ、一時停止、リピート）
-- 📊 通話記録の自動保存
+- 24時間VC滞在
+- Lavalink経由の音楽再生
+- `/play`で検索・選曲（Select Menu）
+- Embed操作パネル（スキップ、一時停止、リピート）
+- 通話ログの保存
+- osu!連携と各種コマンド（成長、プロフィール、ランキングなど）
+- リアルタイムスコア通知
+- 日次プレイ履歴（DM/チャンネル送信）
+- 週次レポート、成長アラート
 
 ### Webダッシュボード
-- 📈 通話記録の表示（テーブル形式）
-- 🔄 リアルタイム更新
-- 🎨 レスポンシブデザイン（Tailwind CSS）
-- 🌙 ダークモード対応
+- 通話ログの一覧表示
+- フィルタとページング
+- Next.js + Tailwind CSS
 
-## 🏗️ システム構成
+## 構成
 
 ```
-Discord Bot (Koyeb) ←→ MongoDB Atlas ←→ Dashboard (Vercel)
+Discord Bot (Koyeb) ←→ PostgreSQL (Supabase/Neonなど) ←→ Dashboard (Vercel)
          ↓
-    Lavalink (公開ノード)
+    Lavalink
 ```
 
-## 📦 必要な環境
+## 必要な環境
 
 ### Bot
 - Node.js 20以上
-- MongoDB Atlas（無料プラン可）
+- PostgreSQL
 - Discord Bot Token
-- 公開Lavalinkノード
+- Lavalinkノード
+- osu! APIのClient ID / Client Secret
+- Supabaseプロジェクト（osu!連携を使う場合）
 
 ### Dashboard
 - Node.js 20以上
-- Vercel アカウント（無料プラン可）
+- PostgreSQL
 
-## 🚀 セットアップ
+## セットアップ
 
-### 1. MongoDB Atlasの準備
+### 1. PostgreSQLの準備
 
-1. [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)でアカウント作成
-2. 無料クラスターを作成
-3. Database Access でユーザーを作成
-4. Network Access で `0.0.0.0/0` を許可
-5. 接続文字列をコピー
+Botは起動時に必要なテーブルを自動作成します。Dashboard側の通話ログ用テーブルは手動で作成してください。
+
+```sql
+CREATE TABLE IF NOT EXISTS voice_logs (
+  id BIGSERIAL PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  username VARCHAR(255) NOT NULL,
+  guild_id VARCHAR(255) NOT NULL,
+  channel_id VARCHAR(255) NOT NULL,
+  channel_name VARCHAR(255) NOT NULL,
+  action VARCHAR(16) NOT NULL,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_logs_timestamp
+  ON voice_logs (timestamp DESC);
+```
 
 ### 2. Discord Botの設定
 
@@ -64,24 +81,20 @@ GUILD_ID=your_guild_id
 VC_CHANNEL_ID=your_voice_channel_id_for_24_7
 DATABASE_URL=postgresql://user:password@host:5432/database
 
-# 公開Lavalinkノードの例
+OSU_CLIENT_ID=your_osu_client_id
+OSU_CLIENT_SECRET=your_osu_client_secret
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
 LAVALINK_HOST=lavalink.example.com
 LAVALINK_PORT=443
 LAVALINK_PASSWORD=youshallnotpass
 LAVALINK_SECURE=true
 
-# Koyebデプロイ時の設定（自動停止防止）
 KOYEB_PUBLIC_DOMAIN=your-app.koyeb.app
 PORT=8000
 ```
-
-#### 公開Lavalinkノードの例
-
-- `lavalink.devamop.in:443` (パスワード: `DevamOP`)
-- `lavalink.oops.wtf:443` (パスワード: `www.freelavalink.ga`)
-- `lava.link:80` (パスワード: `anything`)
-
-※公開ノードは不安定な場合があります。本番環境では自前のLavalinkサーバーを推奨します。
 
 ### 3. Botの起動（ローカル）
 
@@ -101,8 +114,8 @@ cp .env.example .env
 `.env`を編集：
 
 ```env
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/discord-bot
-NEXT_PUBLIC_APP_NAME=Discord Bot Dashboard
+DATABASE_URL=postgresql://user:password@host:5432/database
+NEXT_PUBLIC_APP_NAME=VC 24/7 Dashboard
 ```
 
 ### 5. Dashboardの起動（ローカル）
@@ -112,67 +125,62 @@ cd dashboard
 npm run dev
 ```
 
-http://localhost:3000 でアクセス可能
+http://localhost:3000 でアクセスできます。
 
-## 🌐 デプロイ
+## デプロイ
 
 ### Botのデプロイ（Koyeb）
 
 1. [Koyeb](https://www.koyeb.com/)でアカウント作成
 2. GitHubリポジトリを接続
-3. 以下の設定でデプロイ：
+3. 以下の設定でデプロイ
    - Build command: `cd bot && npm install`
    - Run command: `cd bot && npm start`
-   - Port: `8000`（ヘルスチェック用）
+   - Port: `8000`
 4. 環境変数を設定（.envの内容）
-   - 特に `KOYEB_PUBLIC_DOMAIN` を設定（例: `your-app.koyeb.app`）
-5. Health Check設定:
+5. Health Check設定
    - Path: `/health`
    - Port: `8000`
-
-注意: `KOYEB_PUBLIC_DOMAIN`を設定すると、5分ごとに自己pingして自動停止を防ぎます。
 
 ### Dashboardのデプロイ（Vercel）
 
 1. [Vercel](https://vercel.com/)でアカウント作成
 2. GitHubリポジトリを接続
-3. 以下の設定でデプロイ：
+3. 以下の設定でデプロイ
    - Framework Preset: Next.js
    - Root Directory: `dashboard`
 4. 環境変数を設定（.envの内容）
 
-## 📝 使い方
+## 使い方
 
 1. Discordサーバーでボイスチャンネルに参加
 2. `/play 曲名` で音楽を検索
 3. Select Menuから曲を選択
 4. 操作パネルのボタンで再生をコントロール
-5. 通話記録は自動的にダッシュボードに保存されます
+5. 通話ログは自動的にダッシュボードに保存されます
 
-## 🔧 トラブルシューティング
+## トラブルシューティング
 
 ### Lavalinkに接続できない
 
-- 公開ノードのステータスを確認
-- ホスト名、ポート、パスワードが正しいか確認
-- 別の公開ノードを試す
+- ノードの稼働状況を確認
+- ホスト名、ポート、パスワードを確認
 
-### MongoDBに接続できない
+### PostgreSQLに接続できない
 
-- 接続文字列が正しいか確認
-- Network Accessで `0.0.0.0/0` が許可されているか確認
-- ユーザー名とパスワードが正しいか確認
+- `DATABASE_URL`を確認
+- SSL設定が必要な環境では`ssl`が有効か確認
 
 ### Botが起動しない
 
 - Node.jsのバージョンを確認（20以上）
 - `npm install` を再実行
-- ログを確認してエラーメッセージを確認
+- ログを確認
 
-## 📄 ライセンス
+## ライセンス
 
 MIT License
 
-## 🤝 貢献
+## 貢献
 
-プルリクエストを歓迎します！
+プルリクエストを歓迎します。

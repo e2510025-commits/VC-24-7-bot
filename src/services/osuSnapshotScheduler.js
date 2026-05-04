@@ -1149,7 +1149,11 @@ async function collectDailyPlayHistoryEntries({ trackedUsers, modes, startMs, en
         const modeEntries = [];
 
         for (const score of scores || []) {
-          const playedAt = score?.ended_at || score?.created_at;
+          const playedAt =
+            score?.ended_at ||
+            score?.created_at ||
+            score?.played_at ||
+            score?.started_at;
           const playedMs = new Date(playedAt).getTime();
           if (!Number.isFinite(playedMs)) {
             continue;
