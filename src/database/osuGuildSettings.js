@@ -107,7 +107,7 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       report_top,
       updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
     ON CONFLICT (guild_id)
     DO UPDATE SET
       alert_channel_id = EXCLUDED.alert_channel_id,
