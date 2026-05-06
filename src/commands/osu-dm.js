@@ -57,7 +57,7 @@ export async function execute(interaction) {
       const isEnabled = Boolean(tracked.daily_dm_history_enabled);
       return interaction.editReply(
         translate(lang, 'osu.dmStatus', {
-          status: isEnabled ? 'ON' : 'OFF',
+          status: isEnabled ? translate(lang, 'common.on') : translate(lang, 'common.off'),
           username: tracked.osu_username
         })
       );
@@ -70,7 +70,7 @@ export async function execute(interaction) {
 
     return interaction.editReply(
       translate(lang, 'osu.dmUpdated', {
-        status: enable ? 'ON' : 'OFF',
+        status: enable ? translate(lang, 'common.on') : translate(lang, 'common.off'),
         username: updated.osu_username
       })
     );

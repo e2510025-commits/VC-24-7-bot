@@ -88,7 +88,7 @@ function buildScoreEmbed({ user, mode, score, userStats, previousStats }) {
   const pp = toFiniteNumber(score?.pp);
   const accuracy = toFiniteNumber(score?.accuracy);
   const maxCombo = toFiniteNumber(score?.max_combo);
-  const miss = toFiniteNumber(statistics?.miss);
+  const miss = toFiniteNumber(statistics?.count_miss ?? statistics?.miss);
   const rank = score?.rank || 'F';
   
   // 順位情報

@@ -35,7 +35,7 @@ function formatRatio(ratio) {
   return `${Math.max(0, numeric).toFixed(1)}%`;
 }
 
-function formatRemainingDays(endAt) {
+function formatRemainingDays(endAt, lang) {
   const end = new Date(endAt).getTime();
   if (!Number.isFinite(end)) {
     return 'N/A';
@@ -43,7 +43,9 @@ function formatRemainingDays(endAt) {
 
   const diff = end - Date.now();
   const days = Math.ceil(diff / (24 * 60 * 60 * 1000));
-  return days >= 0 ? `${days}日` : '期限切れ';
+  return days >= 0
+    ? translate(lang, 'osuGoal.remainingDays', { days })
+    : translate(lang, 'osuGoal.expired');
 }
 
 async function resolveTargetUsername(interaction, usernameOverride = null) {
@@ -198,12 +200,15 @@ export async function execute(interaction) {
 
       const embed = new EmbedBuilder()
         .setColor('#F39C12')
-        .setTitle('osu! 目標を設定しました')
-        .setDescription(`${user.username} [${getModeLabel(mode)}]`)
+        .setTitle(translate(lang, 'osuGoal.setTitle'))
+        .setDescription(translate(lang, 'osuGoal.setDescription', {
+          username: user.username,
+          mode: getModeLabel(mode)
+        }))
         .addFields(
-          { name: '指標', value: metricLabel(metric), inline: true },
-          { name: '目標', value: formatMetricDelta(metric, target), inline: true },
-          { name: '期限', value: toDiscordTimestamp(goal.end_at), inline: false }
+            { name: translate(lang, 'osuGoal.metricLabel'), value: metricLabel(metric, lang), inline: true },
+            { name: translate(lang, 'osuGoal.targetLabel'), value: formatMetricDelta(metric, target, lang), inline: true },
+          { name: translate(lang, 'osuGoal.deadlineLabel'), value: toDiscordTimestamp(goal.end_at), inline: false }
         )
         .setTimestamp(new Date());
 
@@ -229,9 +234,15 @@ export async function execute(interaction) {
           const progress = goalProgress(goal.metric, goal.baseline_value, current, goal.target_value);
 
           lines.push(
-            `• ${goal.osu_username} [${getModeLabel(goal.mode)}] ${metricLabel(goal.metric)}\n` +
-              `  進捗: ${progress.achieved === null ? 'N/A' : formatMetricDelta(goal.metric, progress.achieved)} / ${formatMetricDelta(goal.metric, goal.target_value)}\n` +
-              `  達成率: ${formatRatio(progress.ratio)} / 残り: ${formatRemainingDays(goal.end_at)}`
+            translate(lang, 'osuGoal.statusLine', {
+              username: goal.osu_username,
+              mode: getModeLabel(goal.mode),
+                metric: metricLabel(goal.metric, lang),
+                achieved: progress.achieved === null ? 'N/A' : formatMetricDelta(goal.metric, progress.achieved, lang),
+                target: formatMetricDelta(goal.metric, goal.target_value, lang),
+              ratio: formatRatio(progress.ratio),
+              remaining: formatRemainingDays(goal.end_at, lang)
+            })
           );
 
           await saveOsuSnapshot({
@@ -246,13 +257,18 @@ export async function execute(interaction) {
             playCount: stats.play_count
           });
         } catch (error) {
-          lines.push(`• ${goal.osu_username} [${getModeLabel(goal.mode)}] ${metricLabel(goal.metric)}\n  進捗取得失敗: ${error.message}`);
+          lines.push(translate(lang, 'osuGoal.statusErrorLine', {
+            username: goal.osu_username,
+            mode: getModeLabel(goal.mode),
+            metric: metricLabel(goal.metric, lang),
+            error: error.message
+          }));
         }
       }
 
       const embed = new EmbedBuilder()
         .setColor('#F1C40F')
-        .setTitle('osu! 目標進捗')
+        .setTitle(translate(lang, 'osuGoal.statusTitle'))
         .setDescription(lines.join('\n'))
         .setTimestamp(new Date());
 
@@ -272,7 +288,7 @@ export async function execute(interaction) {
       return interaction.editReply(translate(lang, 'osu.goal.cleared', { count: cleared }));
     }
 
-    return interaction.editReply('❌ 不明なサブコマンドです');
+    return interaction.editReply(translate(lang, 'common.unknownSubcommand'));
   } catch (error) {
     log(`/osu-goal エラー: ${error.message}`, 'error');
     log(`エラースタック: ${error.stack}`, 'error');

@@ -119,9 +119,9 @@ export async function execute(interaction) {
 
     const beatmap = score.beatmap || {};
     const beatmapset = await resolveBeatmapset(score);
-    const artist = beatmapset?.artist || 'Unknown Artist';
-    const title = beatmapset?.title || 'Unknown Title';
-    const version = beatmap?.version || 'Unknown Difficulty';
+    const artist = beatmapset?.artist || translate(lang, 'osuRecent.unknownArtist');
+    const title = beatmapset?.title || translate(lang, 'osuRecent.unknownTitle');
+    const version = beatmap?.version || translate(lang, 'osuRecent.unknownDifficulty');
     const starRating = Number.isFinite(Number(beatmap?.difficulty_rating))
       ? `${Number(beatmap.difficulty_rating).toFixed(2)}★`
       : 'N/A';
@@ -130,9 +130,11 @@ export async function execute(interaction) {
     const count300 = statistics.great ?? statistics.perfect ?? 0;
     const count100 = statistics.ok ?? 0;
     const count50 = statistics.meh ?? 0;
-    const countMiss = statistics.miss ?? 0;
+    const countMiss = statistics.count_miss ?? statistics.miss ?? 0;
     const mods = Array.isArray(score.mods) && score.mods.length > 0 ? score.mods.join(', ') : 'NM';
-    const status = score.passed ? '成功' : '失敗';
+    const status = score.passed
+      ? translate(lang, 'osuRecent.statusSuccess')
+      : translate(lang, 'osuRecent.statusFail');
     const playTime = toDiscordTimestamp(score.ended_at || score.created_at);
     const scoreUrl = score.id
       ? `https://osu.ppy.sh/scores/${score.mode || 'osu'}/${score.id}`
@@ -140,47 +142,47 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor(toHexColor(score.rank))
-      .setTitle(`${user.username} の最新プレイ [${modeLabel}]`)
+      .setTitle(translate(lang, 'osuRecent.title', { username: user.username, mode: modeLabel }))
       .setURL(scoreUrl)
       .setDescription(`**${artist} - ${title} [${version}]**`)
       .addFields(
         {
-          name: 'スター',
+          name: translate(lang, 'osuRecent.star'),
           value: starRating,
           inline: true
         },
         {
-          name: 'ランク',
+          name: translate(lang, 'osuRecent.rank'),
           value: `${resolveRank(score.rank)} (${status})`,
           inline: true
         },
         {
-          name: '獲得PP',
+          name: translate(lang, 'osuRecent.pp'),
           value: formatPp(score.pp),
           inline: true
         },
         {
-          name: '精度',
+          name: translate(lang, 'osuRecent.accuracy'),
           value: formatRatioPercent(score.accuracy),
           inline: true
         },
         {
-          name: 'コンボ',
+          name: translate(lang, 'osuRecent.combo'),
           value: `${formatNumber(score.max_combo)}x`,
           inline: true
         },
         {
-          name: '判定 (300/100/50/Miss)',
+          name: translate(lang, 'osuRecent.judgements'),
           value: `${formatNumber(count300)}/${formatNumber(count100)}/${formatNumber(count50)}/${formatNumber(countMiss)}`,
           inline: true
         },
         {
-          name: 'MOD',
+          name: translate(lang, 'osuRecent.mods'),
           value: mods,
           inline: true
         },
         {
-          name: 'プレイ時間',
+          name: translate(lang, 'osuRecent.playTime'),
           value: playTime,
           inline: true
         }

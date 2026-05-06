@@ -44,7 +44,7 @@ const RANK_MILESTONES = [
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY_HISTORY_DESCRIPTION_LIMIT = 3600;
 const DEFAULT_DAILY_HISTORY_TZ_OFFSET = 9;
-const DAILY_HISTORY_DEFAULT_RECENT_LIMIT = 100;
+const DAILY_HISTORY_DEFAULT_RECENT_LIMIT = 200;
 const IMPORTANT_BEST_UPDATE_PP_DELTA = 20;
 const IMPORTANT_RANK_MILESTONE_THRESHOLD = 1000;
 const IMPORTANT_PP_MILESTONE_THRESHOLD = 10000;
@@ -112,7 +112,7 @@ function parseDailyHistoryRecentLimit() {
     return DAILY_HISTORY_DEFAULT_RECENT_LIMIT;
   }
 
-  return Math.max(20, Math.min(100, Math.trunc(numeric)));
+  return Math.max(20, Math.min(300, Math.trunc(numeric)));
 }
 
 function formatDateKeyWithOffset(timestampMs, offsetHours) {
@@ -1123,6 +1123,41 @@ async function sendGoalReminders(client) {
   return sentCount;
 }
 
+async function fetchRecentScoresForWindow(lookupTarget, mode, startMs, recentLimit) {
+  const maxTotal = Math.max(20, Math.trunc(recentLimit || 0));
+  const perPage = Math.min(100, Math.max(20, maxTotal));
+  const results = [];
+  let offset = 0;
+
+  while (results.length < maxTotal) {
+    const pageLimit = Math.min(perPage, maxTotal - results.length);
+    const page = await fetchRecentScores(lookupTarget, mode, pageLimit, { offset });
+    if (!Array.isArray(page) || page.length === 0) {
+      break;
+    }
+
+    results.push(...page);
+    offset += page.length;
+
+    if (page.length < pageLimit) {
+      break;
+    }
+
+    const oldest = page[page.length - 1];
+    const oldestPlayedAt =
+      oldest?.ended_at ||
+      oldest?.created_at ||
+      oldest?.played_at ||
+      oldest?.started_at;
+    const oldestMs = new Date(oldestPlayedAt).getTime();
+    if (Number.isFinite(oldestMs) && oldestMs < startMs) {
+      break;
+    }
+  }
+
+  return results;
+}
+
 async function collectDailyPlayHistoryEntries({ trackedUsers, modes, startMs, endMs, recentLimit }) {
   const entriesByMode = new Map(modes.map(mode => [mode, []]));
   const userModeStats = new Map();
@@ -1140,7 +1175,12 @@ async function collectDailyPlayHistoryEntries({ trackedUsers, modes, startMs, en
 
     for (const mode of modes) {
       try {
-        const scores = await fetchRecentScores(lookupTarget, mode, recentLimit);
+        const scores = await fetchRecentScoresForWindow(
+          lookupTarget,
+          mode,
+          startMs,
+          recentLimit
+        );
         const historicalBeatmapIds = new Set();
         const todayUniqueBeatmapIds = new Set();
         let firstSeenBeatmaps = 0;

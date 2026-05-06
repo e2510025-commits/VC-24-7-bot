@@ -26,14 +26,26 @@ function average(values) {
 }
 
 function calcMissCount(score) {
-  const miss = score?.statistics?.miss;
+  const miss = score?.statistics?.count_miss ?? score?.statistics?.miss;
   const numeric = toNumber(miss);
   return numeric === null ? 0 : numeric;
 }
 
 function calcTotalHits(score) {
   const stats = score?.statistics || {};
-  const fields = ['great', 'perfect', 'ok', 'meh', 'miss', 'large_tick_hit', 'small_tick_hit'];
+  const fields = [
+    'count_300',
+    'count_100',
+    'count_50',
+    'count_miss',
+    'great',
+    'perfect',
+    'ok',
+    'meh',
+    'miss',
+    'large_tick_hit',
+    'small_tick_hit'
+  ];
   return fields.reduce((acc, key) => {
     const numeric = toNumber(stats[key]);
     return acc + (numeric === null ? 0 : numeric);
@@ -54,6 +66,14 @@ function formatSignedPercent(delta) {
   return `${sign}${Math.abs(numeric).toFixed(2)}%`;
 }
 
+function formatSeconds(seconds, lang) {
+  const value = toNumber(seconds);
+  if (value === null) {
+    return 'N/A';
+  }
+  return translate(lang, 'osuAnalysis.secondsFormat', { seconds: Math.round(value) });
+}
+
 function averageFromScores(scores, selector) {
   if (!Array.isArray(scores) || scores.length === 0) {
     return null;
@@ -67,23 +87,23 @@ function averageFromScores(scores, selector) {
   return average(values);
 }
 
-function starBucket(star) {
+function starBucket(star, lang) {
   const value = toNumber(star);
   if (value === null) return null;
-  if (value < 3) return '〜2.99★';
-  if (value < 5) return '3.00〜4.99★';
-  return '5.00★〜';
+  if (value < 3) return translate(lang, 'osuAnalysis.starBucketLow');
+  if (value < 5) return translate(lang, 'osuAnalysis.starBucketMid');
+  return translate(lang, 'osuAnalysis.starBucketHigh');
 }
 
-function lengthBucket(seconds) {
+function lengthBucket(seconds, lang) {
   const value = toNumber(seconds);
   if (value === null) return null;
-  if (value < 90) return '〜1:29';
-  if (value < 210) return '1:30〜3:29';
-  return '3:30〜';
+  if (value < 90) return translate(lang, 'osuAnalysis.lengthBucketShort');
+  if (value < 210) return translate(lang, 'osuAnalysis.lengthBucketMid');
+  return translate(lang, 'osuAnalysis.lengthBucketLong');
 }
 
-function topBucketLabel(scores, bucketSelector) {
+function topBucketLabel(scores, bucketSelector, lang) {
   const counts = new Map();
 
   for (const score of scores) {
@@ -99,10 +119,13 @@ function topBucketLabel(scores, bucketSelector) {
     return 'N/A';
   }
 
-  return `${sorted[0][0]} (${sorted[0][1]}譜面)`;
+  return translate(lang, 'osuAnalysis.topBucketFormat', {
+    label: sorted[0][0],
+    count: sorted[0][1]
+  });
 }
 
-function topMods(scores) {
+function topMods(scores, lang) {
   const counts = new Map();
 
   for (const score of scores) {
@@ -117,7 +140,10 @@ function topMods(scores) {
     return 'N/A';
   }
 
-  return `${sorted[0][0]} (${sorted[0][1]}回)`;
+  return translate(lang, 'osuAnalysis.topModsFormat', {
+    mods: sorted[0][0],
+    count: sorted[0][1]
+  });
 }
 
 async function resolveTargetUsername(interaction) {
@@ -232,58 +258,74 @@ export async function execute(interaction) {
     const avgStar = averageFromScores(successful, score => score?.beatmap?.difficulty_rating);
     const avgLength = averageFromScores(successful, score => score?.beatmap?.total_length);
     const avgBpm = averageFromScores(successful, score => score?.beatmap?.bpm);
-    const topStarRange = topBucketLabel(successful, score => starBucket(score?.beatmap?.difficulty_rating));
-    const topLengthRange = topBucketLabel(successful, score => lengthBucket(score?.beatmap?.total_length));
-    const topModsLabel = topMods(successful);
+    const topStarRange = topBucketLabel(
+      successful,
+      score => starBucket(score?.beatmap?.difficulty_rating, lang),
+      lang
+    );
+    const topLengthRange = topBucketLabel(
+      successful,
+      score => lengthBucket(score?.beatmap?.total_length, lang),
+      lang
+    );
+    const topModsLabel = topMods(successful, lang);
 
     const embed = new EmbedBuilder()
       .setColor('#2ECC71')
-      .setTitle(`${user.username} の品質分析 [${modeLabel}]`)
+      .setTitle(translate(lang, 'osuAnalysis.title', { username: user.username, mode: modeLabel }))
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription(`直近 ${scores.length} プレイを分析`) 
+      .setDescription(translate(lang, 'osuAnalysis.description', { count: scores.length }))
       .addFields(
         {
-          name: '成功率',
+          name: translate(lang, 'osuAnalysis.successRate'),
           value: passRate === null ? 'N/A' : formatRatioPercent(passRate),
           inline: true
         },
         {
-          name: '平均精度',
+          name: translate(lang, 'osuAnalysis.avgAccuracy'),
           value: avgAccRatio === null ? 'N/A' : formatRatioPercent(avgAccRatio),
           inline: true
         },
         {
-          name: '平均PP(成功のみ)',
+          name: translate(lang, 'osuAnalysis.avgPp'),
           value: avgPp === null ? 'N/A' : `${avgPp.toFixed(2)}pp`,
           inline: true
         },
         {
-          name: '平均Miss(成功のみ)',
+          name: translate(lang, 'osuAnalysis.avgMiss'),
           value: avgMiss === null ? 'N/A' : `${avgMiss.toFixed(2)}`,
           inline: true
         },
         {
-          name: 'Miss率(成功のみ)',
+          name: translate(lang, 'osuAnalysis.missRate'),
           value: avgMissRate === null ? 'N/A' : formatRatioPercent(avgMissRate),
           inline: true
         },
         {
-          name: '後半精度トレンド',
+          name: translate(lang, 'osuAnalysis.lateTrend'),
           value: formatSignedPercent(trendAccDelta),
           inline: true
         },
         {
-          name: '補足',
-          value: `成功 ${successful.length} / 失敗 ${failed.length} / 取得上限 ${limit}`,
+          name: translate(lang, 'osuAnalysis.note'),
+          value: translate(lang, 'osuAnalysis.noteFormat', {
+            success: successful.length,
+            failed: failed.length,
+            limit
+          }),
           inline: false
         },
         {
-          name: '譜面傾向（成功のみ）',
+          name: translate(lang, 'osuAnalysis.mapTrends'),
           value: [
-            `平均: ${avgStar === null ? 'N/A' : `${avgStar.toFixed(2)}★`} / ${avgLength === null ? 'N/A' : `${Math.round(avgLength)}秒`} / ${avgBpm === null ? 'N/A' : `${Math.round(avgBpm)} BPM`}`,
-            `最多★帯: ${topStarRange}`,
-            `最多尺: ${topLengthRange}`,
-            `最多MOD: ${topModsLabel}`
+            translate(lang, 'osuAnalysis.mapTrendLine', {
+              star: avgStar === null ? 'N/A' : `${avgStar.toFixed(2)}★`,
+              length: formatSeconds(avgLength, lang),
+              bpm: avgBpm === null ? 'N/A' : `${Math.round(avgBpm)} BPM`
+            }),
+            `${translate(lang, 'osuAnalysis.topStarLabel')}: ${topStarRange}`,
+            `${translate(lang, 'osuAnalysis.topLengthLabel')}: ${topLengthRange}`,
+            `${translate(lang, 'osuAnalysis.topModsLabel')}: ${topModsLabel}`
           ].join('\n'),
           inline: false
         }

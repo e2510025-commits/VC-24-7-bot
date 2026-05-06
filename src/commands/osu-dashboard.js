@@ -90,9 +90,9 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor('#1ABC9C')
-      .setTitle(`${baseUser.username} のモード別ダッシュボード`)
+      .setTitle(translate(lang, 'osuDashboard.title', { username: baseUser.username }))
       .setURL(`https://osu.ppy.sh/users/${baseUser.id}`)
-      .setDescription('4モードの現在値と24h変化をまとめて表示')
+      .setDescription(translate(lang, 'osuDashboard.description'))
       .setTimestamp(new Date());
 
     for (const mode of MODES) {
@@ -126,17 +126,17 @@ export async function execute(interaction) {
         embed.addFields({
           name: `[${getModeLabel(mode)}]`,
           value: [
-            `PP: ${formatNumber(stats.pp)}pp`,
-            `順位: ${formatRank(stats.global_rank)}`,
-            `24h PP: ${formatPpDelta(ppDelta)}`,
-            `24h 順位: ${formatRankDelta(snapshot?.global_rank, stats.global_rank)}`
+            `${translate(lang, 'osuDashboard.pp')}: ${formatNumber(stats.pp)}pp`,
+            `${translate(lang, 'osuDashboard.rank')}: ${formatRank(stats.global_rank)}`,
+            `${translate(lang, 'osuDashboard.ppDelta')}: ${formatPpDelta(ppDelta)}`,
+            `${translate(lang, 'osuDashboard.rankDelta')}: ${formatRankDelta(snapshot?.global_rank, stats.global_rank)}`
           ].join('\n'),
           inline: true
         });
       } catch {
         embed.addFields({
           name: `[${getModeLabel(mode)}]`,
-          value: 'データ取得不可',
+          value: translate(lang, 'osuDashboard.unavailable'),
           inline: true
         });
       }

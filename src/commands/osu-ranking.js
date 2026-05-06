@@ -8,6 +8,7 @@ import {
   computeGrowthDelta,
   formatMetricDelta,
   formatMetricValue,
+  getPeriodLabel,
   getSnapshotValue,
   getStatsValue,
   metricLabel
@@ -174,14 +175,27 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor('#00B894')
-      .setTitle(`osu! サーバー成長ランキング [${getModeLabel(mode)}]`)
-      .setDescription(`${period.label} / 指標: ${metricLabel(metric)}`)
+      .setTitle(translate(lang, 'osuRanking.title', { mode: getModeLabel(mode) }))
+      .setDescription(translate(lang, 'osuRanking.description', {
+        period: getPeriodLabel(periodKey, lang),
+        metric: metricLabel(metric, lang)
+      }))
       .addFields({
-        name: `TOP ${sorted.length}`,
+        name: translate(lang, 'osuRanking.topTitle', { count: sorted.length }),
         value: sorted
           .map((item, index) => {
             const mention = `<@${item.discordId}>`;
-            return `${index + 1}. ${mention} (${item.osuUsername})\n  変化: ${formatMetricDelta(metric, item.delta)} / 現在: ${formatMetricValue(metric === 'rank_improvement' ? 'global_rank' : metric, item.currentValue)}`;
+            return translate(lang, 'osuRanking.rowFormat', {
+              rank: index + 1,
+              mention,
+              username: item.osuUsername,
+              delta: formatMetricDelta(metric, item.delta, lang),
+              current: formatMetricValue(
+                metric === 'rank_improvement' ? 'global_rank' : metric,
+                item.currentValue,
+                lang
+              )
+            });
           })
           .join('\n')
       })

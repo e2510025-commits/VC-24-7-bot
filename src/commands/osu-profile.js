@@ -68,57 +68,61 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor('#1EA7FD')
-      .setTitle(`${user.username} の osu!プロフィール [${modeLabel}]`)
+      .setTitle(translate(lang, 'osuProfile.title', { username: user.username, mode: modeLabel }))
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription(`**グローバルランク:** ${globalRank}\n**国別ランク (${user.country_code || 'N/A'}):** ${countryRank}`)
+      .setDescription(translate(lang, 'osuProfile.description', {
+        globalRank,
+        country: user.country_code || 'N/A',
+        countryRank
+      }))
       .addFields(
         {
-          name: 'PP',
+          name: translate(lang, 'osuProfile.pp'),
           value: `${formatNumber(stats.pp)}pp`,
           inline: true
         },
         {
-          name: '精度',
+          name: translate(lang, 'osuProfile.accuracy'),
           value: formatPercent(stats.hit_accuracy),
           inline: true
         },
         {
-          name: 'レベル',
+          name: translate(lang, 'osuProfile.level'),
           value: `${levelCurrent} (${levelProgress}%)`,
           inline: true
         },
         {
-          name: 'プレイ時間',
-          value: formatPlayTime(stats.play_time),
+          name: translate(lang, 'osuProfile.playTime'),
+          value: formatPlayTime(stats.play_time, lang),
           inline: true
         },
         {
-          name: '最大コンボ',
+          name: translate(lang, 'osuProfile.maxCombo'),
           value: `${formatNumber(stats.maximum_combo)}x`,
           inline: true
         },
         {
-          name: 'SSH',
+          name: translate(lang, 'osuProfile.ssh'),
           value: formatNumber(grades.ssh || 0),
           inline: true
         },
         {
-          name: 'SS',
+          name: translate(lang, 'osuProfile.ss'),
           value: formatNumber(grades.ss || 0),
           inline: true
         },
         {
-          name: 'SH',
+          name: translate(lang, 'osuProfile.sh'),
           value: formatNumber(grades.sh || 0),
           inline: true
         },
         {
-          name: 'S',
+          name: translate(lang, 'osuProfile.s'),
           value: formatNumber(grades.s || 0),
           inline: true
         },
         {
-          name: 'A',
+          name: translate(lang, 'osuProfile.a'),
           value: formatNumber(grades.a || 0),
           inline: true
         }

@@ -87,17 +87,17 @@ function toHeatChar(value, max) {
   return HEAT_LEVELS[0];
 }
 
-function buildHeatmapText(matrix) {
+function buildHeatmapText(matrix, lang) {
   const max = Math.max(...matrix.flat(), 0);
   const lines = [];
-  lines.push(`      ${TIME_BUCKETS.map(bucket => bucket.label).join('  ')}`);
+  lines.push(`${translate(lang, 'osuHeatmap.header')}${TIME_BUCKETS.map(bucket => bucket.label).join('  ')}`);
 
   for (let day = 0; day < WEEKDAY_LABELS.length; day += 1) {
     const chars = matrix[day].map(value => toHeatChar(value, max));
     lines.push(`${WEEKDAY_LABELS[day].padEnd(4, ' ')} | ${chars.join('     ')}`);
   }
 
-  lines.push('Legend: . low -> @ high');
+  lines.push(translate(lang, 'osuHeatmap.legend'));
   return ['```', ...lines, '```'].join('\n');
 }
 
@@ -155,25 +155,35 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor('#E67E22')
-      .setTitle(`${user.username} ベスト更新ヒートマップ [${getModeLabel(mode)}]`)
+      .setTitle(translate(lang, 'osuHeatmap.title', {
+        username: user.username,
+        mode: getModeLabel(mode)
+      }))
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription(`対象期間: 直近${lookbackDays}日 / 更新数: ${events.length}`)
+      .setDescription(translate(lang, 'osuHeatmap.description', {
+        days: lookbackDays,
+        count: events.length
+      }))
       .addFields(
         {
-          name: 'Heatmap (UTC)',
-          value: buildHeatmapText(matrix),
+          name: translate(lang, 'osuHeatmap.fieldTitle'),
+          value: buildHeatmapText(matrix, lang),
           inline: false
         },
         {
-          name: '最頻更新帯',
+          name: translate(lang, 'osuHeatmap.peakTitle'),
           value:
             peak.value <= 0
               ? 'N/A'
-              : `${WEEKDAY_LABELS[peak.day]} ${TIME_BUCKETS[peak.bucket].label} (${peak.value}回)`,
+              : translate(lang, 'osuHeatmap.peakValue', {
+                  weekday: WEEKDAY_LABELS[peak.day],
+                  bucket: TIME_BUCKETS[peak.bucket].label,
+                  count: peak.value
+                }),
           inline: true
         },
         {
-          name: '最新更新',
+          name: translate(lang, 'osuHeatmap.latestTitle'),
           value: toDiscordTimestamp(events[events.length - 1]?.recorded_at),
           inline: true
         }

@@ -34,6 +34,7 @@ import * as osuAdminCommand from './commands/osu-admin.js';
 import * as osuRoleSetupCommand from './commands/osu-role-setup.js';
 import * as languageCommand from './commands/language.js';
 import * as cloneCategoryCommand from './commands/clone-category.js';
+import * as pingCommand from './commands/ping.js';
 
 config();
 
@@ -73,6 +74,7 @@ client.commands.set(osuAdminCommand.data.name, osuAdminCommand);
 client.commands.set(osuRoleSetupCommand.data.name, osuRoleSetupCommand);
 client.commands.set(languageCommand.data.name, languageCommand);
 client.commands.set(cloneCategoryCommand.data.name, cloneCategoryCommand);
+client.commands.set(pingCommand.data.name, pingCommand);
 
 // 音楽プレイヤー初期化
 client.musicPlayer = new MusicPlayer(client);

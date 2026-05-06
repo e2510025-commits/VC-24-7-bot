@@ -8,7 +8,7 @@ import {
   getModeLabel,
   normalizeOsuMode
 } from '../utils/osuApi.js';
-import { PERIOD_MAP } from '../utils/osuGrowthUtils.js';
+import { PERIOD_MAP, getPeriodLabel } from '../utils/osuGrowthUtils.js';
 import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
@@ -199,15 +199,29 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor('#6C5CE7')
-      .setTitle(`osu! フレンドリーグ [${getModeLabel(mode)}]`)
-      .setDescription(`${period.label} / ポイント式: PPx2 + RankGain/100 + ActiveDaysx3 + PlayCountx0.1`)
+      .setTitle(translate(lang, 'osuLeague.title', { mode: getModeLabel(mode) }))
+      .setDescription(translate(lang, 'osuLeague.description', {
+        period: getPeriodLabel(periodKey, lang)
+      }))
       .addFields({
-        name: `LEAGUE TOP ${sorted.length}`,
+        name: translate(lang, 'osuLeague.topTitle', { count: sorted.length }),
         value: sorted
           .map((row, index) => {
             const pp = toFiniteNumber(row.ppDelta);
             const rank = toFiniteNumber(row.rankGain);
-            return `${index + 1}. <@${row.discordId}> (${row.osuUsername})\n  Point: ${row.points.toFixed(2)} / PP: ${pp === null ? 'N/A' : `${pp >= 0 ? '+' : '-'}${Math.abs(pp).toFixed(2)}`} / Rank: ${rank === null ? 'N/A' : (rank >= 0 ? `↑${formatNumber(Math.trunc(rank))}` : `↓${formatNumber(Math.trunc(Math.abs(rank)))}`)} / Active: ${formatNumber(row.activeDays)}日`;
+            return translate(lang, 'osuLeague.rowFormat', {
+              rankIndex: index + 1,
+              mention: `<@${row.discordId}>`,
+              username: row.osuUsername,
+              points: row.points.toFixed(2),
+              pp: pp === null ? 'N/A' : `${pp >= 0 ? '+' : '-'}${Math.abs(pp).toFixed(2)}`,
+              rank: rank === null
+                ? 'N/A'
+                : (rank >= 0
+                  ? `↑${formatNumber(Math.trunc(rank))}`
+                  : `↓${formatNumber(Math.trunc(Math.abs(rank)))}`),
+              activeDays: formatNumber(row.activeDays)
+            });
           })
           .join('\n')
       })

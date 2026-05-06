@@ -11,6 +11,75 @@ export const PERIOD_MAP = {
   '180d': { label: '180日', ms: 180 * 24 * 60 * 60 * 1000 }
 };
 
+const PERIOD_LABELS = {
+  ja: {
+    '24h': '24h',
+    '1d': '1日',
+    '1week': '1週',
+    '1month': '1ヶ月',
+    '7d': '7日',
+    '30d': '30日',
+    '90d': '90日',
+    '180d': '180日',
+    all: '全期間'
+  },
+  en: {
+    '24h': '24h',
+    '1d': '1d',
+    '1week': '1 week',
+    '1month': '1 month',
+    '7d': '7d',
+    '30d': '30d',
+    '90d': '90d',
+    '180d': '180d',
+    all: 'All time'
+  },
+  ko: {
+    '24h': '24h',
+    '1d': '1일',
+    '1week': '1주',
+    '1month': '1개월',
+    '7d': '7일',
+    '30d': '30일',
+    '90d': '90일',
+    '180d': '180일',
+    all: '전체 기간'
+  }
+};
+
+const METRIC_LABELS = {
+  ja: {
+    pp: 'PP',
+    play_time: 'プレイ時間',
+    play_count: 'プレイ回数',
+    rank_improvement: '順位上昇',
+    global_rank: 'グローバル順位'
+  },
+  en: {
+    pp: 'PP',
+    play_time: 'Play time',
+    play_count: 'Play count',
+    rank_improvement: 'Rank gain',
+    global_rank: 'Global rank'
+  },
+  ko: {
+    pp: 'PP',
+    play_time: '플레이 시간',
+    play_count: '플레이 횟수',
+    rank_improvement: '순위 상승',
+    global_rank: '글로벌 랭크'
+  }
+};
+
+function resolveLang(lang) {
+  return PERIOD_LABELS[lang] ? lang : 'ja';
+}
+
+export function getPeriodLabel(periodKey, lang = 'ja') {
+  const resolved = resolveLang(lang);
+  return PERIOD_LABELS[resolved]?.[periodKey] || PERIOD_LABELS.ja[periodKey] || periodKey;
+}
+
 export const GOAL_METRICS = [
   { name: 'PP', value: 'pp' },
   { name: 'プレイ時間', value: 'play_time' },
@@ -89,24 +158,12 @@ export function computeGrowthDelta(metric, previousValue, currentValue) {
   return current - previous;
 }
 
-export function metricLabel(metric) {
-  switch (metric) {
-    case 'pp':
-      return 'PP';
-    case 'play_time':
-      return 'プレイ時間';
-    case 'play_count':
-      return 'プレイ回数';
-    case 'rank_improvement':
-      return '順位上昇';
-    case 'global_rank':
-      return 'グローバル順位';
-    default:
-      return metric;
-  }
+export function metricLabel(metric, lang = 'ja') {
+  const resolved = resolveLang(lang);
+  return METRIC_LABELS[resolved]?.[metric] || METRIC_LABELS.ja[metric] || metric;
 }
 
-export function formatMetricValue(metric, value) {
+export function formatMetricValue(metric, value, lang = 'ja') {
   const numeric = toFiniteNumber(value);
   if (numeric === null) {
     return 'N/A';
@@ -116,7 +173,7 @@ export function formatMetricValue(metric, value) {
     case 'pp':
       return `${numeric.toFixed(2)}pp`;
     case 'play_time':
-      return formatPlayTime(numeric);
+      return formatPlayTime(numeric, lang);
     case 'play_count':
       return `${formatNumber(Math.trunc(numeric))}`;
     case 'rank_improvement':
@@ -128,7 +185,7 @@ export function formatMetricValue(metric, value) {
   }
 }
 
-export function formatMetricDelta(metric, value) {
+export function formatMetricDelta(metric, value, lang = 'ja') {
   const numeric = toFiniteNumber(value);
   if (numeric === null) {
     return 'N/A';
@@ -137,13 +194,19 @@ export function formatMetricDelta(metric, value) {
   if (metric === 'play_time') {
     const abs = Math.max(0, Math.trunc(Math.abs(numeric)));
     const sign = numeric > 0 ? '+' : numeric < 0 ? '-' : '±';
+    const unitsByLang = {
+      ja: { day: '日', hour: '時間', minute: '分' },
+      en: { day: 'd', hour: 'h', minute: 'm' },
+      ko: { day: '일', hour: '시간', minute: '분' }
+    };
+    const units = unitsByLang[resolveLang(lang)] || unitsByLang.ja;
     const days = Math.floor(abs / 86_400);
     const hours = Math.floor((abs % 86_400) / 3_600);
     const minutes = Math.floor((abs % 3_600) / 60);
     const parts = [];
-    if (days > 0) parts.push(`${days}日`);
-    if (hours > 0) parts.push(`${hours}時間`);
-    parts.push(`${minutes}分`);
+    if (days > 0) parts.push(`${days}${units.day}`);
+    if (hours > 0) parts.push(`${hours}${units.hour}`);
+    parts.push(`${minutes}${units.minute}`);
     return `${sign}${parts.join(' ')}`;
   }
 

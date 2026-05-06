@@ -14,6 +14,7 @@ import {
   GRAPH_METRICS,
   PERIOD_MAP,
   formatMetricValue,
+  getPeriodLabel,
   getSnapshotValue,
   getStatsValue,
   metricLabel,
@@ -319,7 +320,7 @@ async function buildChartRenderResult(config, fileName) {
   };
 }
 
-function buildSamplingNote({ originalLabels, sampledLabels }) {
+function buildSamplingNote({ originalLabels, sampledLabels }, lang) {
   if (!Number.isInteger(originalLabels) || !Number.isInteger(sampledLabels)) {
     return '';
   }
@@ -328,15 +329,18 @@ function buildSamplingNote({ originalLabels, sampledLabels }) {
     return '';
   }
 
-  return `\nデータ点が多いため ${formatNumber(originalLabels)}点 -> ${formatNumber(sampledLabels)}点 に間引いて表示しています`;
+  return translate(lang, 'osuGraph.samplingNote', {
+    original: formatNumber(originalLabels),
+    sampled: formatNumber(sampledLabels)
+  });
 }
 
-function buildChartDeliveryNote(chartMeta) {
+function buildChartDeliveryNote(chartMeta, lang) {
   if (chartMeta?.usedAttachment) {
-    return '\n画像を直接添付して配信しています';
+    return translate(lang, 'osuGraph.deliveryAttachment');
   }
 
-  return chartMeta?.usedShortUrl ? '\n画像送信安定化のため短縮URL経由で配信しています' : '';
+  return chartMeta?.usedShortUrl ? translate(lang, 'osuGraph.deliveryShortUrl') : '';
 }
 
 function startOfUtcDay(dateLike) {
@@ -488,9 +492,9 @@ function formatSignedDecimal(value, digits = 2) {
   return `${sign}${Math.abs(numeric).toFixed(digits)}`;
 }
 
-function buildDailySummaryTable(series, metric) {
+function buildDailySummaryTable(series, metric, lang) {
   if (!Array.isArray(series) || series.length === 0) {
-    return 'データ不足';
+    return translate(lang, 'osuGraph.dataInsufficient');
   }
 
   const startIndex = Math.max(0, series.length - DAILY_TABLE_MAX_ROWS);
@@ -502,7 +506,7 @@ function buildDailySummaryTable(series, metric) {
     const delta = previous ? current.value - previous.value : null;
 
     rows.push(
-      `${current.label} | ${formatMetricValue(metric, current.value)} | ${formatDailyDelta(metric, delta)}`
+      `${current.label} | ${formatMetricValue(metric, current.value, lang)} | ${formatDailyDelta(metric, delta)}`
     );
   }
 
@@ -513,7 +517,7 @@ function buildDailySummaryTable(series, metric) {
     return content;
   }
 
-  // Embed field limit(1024)に収めるため、古い行から削る。
+  // Trim older rows to fit embed field limits.
   while (rows.length > 1) {
     rows.shift();
     const trimmed = ['```', header, ...rows, '```'].join('\n');
@@ -525,9 +529,9 @@ function buildDailySummaryTable(series, metric) {
   return ['```', header, rows[0], '```'].join('\n');
 }
 
-function buildPpRankSummaryTable(series) {
+function buildPpRankSummaryTable(series, lang) {
   if (!Array.isArray(series) || series.length === 0) {
-    return 'データ不足';
+    return translate(lang, 'osuGraph.dataInsufficient');
   }
 
   const startIndex = Math.max(0, series.length - DAILY_TABLE_MAX_ROWS);
@@ -578,8 +582,10 @@ async function resolveTargetUsername(interaction) {
   return getLinkedOsuUsername(interaction.user.id);
 }
 
-function buildChartConfig({ labels, values, metric }) {
-  const title = `${metricLabel(metric)} 推移`;
+function buildChartConfig({ labels, values, metric }, lang) {
+  const title = translate(lang, 'osuGraph.metricChartTitle', {
+    metric: metricLabel(metric, lang)
+  });
   const rankChart = metric === 'global_rank';
 
   return {
@@ -619,8 +625,10 @@ function buildChartConfig({ labels, values, metric }) {
   };
 }
 
-function buildCompareUsersChartConfig({ userDatasets, metric }) {
-  const title = `${metricLabel(metric)} 比較`;
+function buildCompareUsersChartConfig({ userDatasets, metric }, lang) {
+  const title = translate(lang, 'osuGraph.compareChartTitle', {
+    metric: metricLabel(metric, lang)
+  });
   const rankChart = metric === 'global_rank';
   
   const colors = [
@@ -1085,9 +1093,9 @@ function buildBestPpScatterChartConfig(points) {
   };
 }
 
-function buildBestScoreSampleTable(points) {
+function buildBestScoreSampleTable(points, lang) {
   if (!Array.isArray(points) || points.length === 0) {
-    return 'データ不足';
+    return translate(lang, 'osuGraph.dataInsufficient');
   }
 
   const rows = points
@@ -1100,7 +1108,9 @@ function buildBestScoreSampleTable(points) {
 
   const header = 'Time | Grade | PP | Beatmap';
   const content = ['```', header, ...rows, '```'].join('\n');
-  return content.length <= 1000 ? content : 'データ件数が多いため省略しました';
+  return content.length <= 1000
+    ? content
+    : translate(lang, 'osuGraph.dataOmitted');
 }
 
 export const data = new SlashCommandBuilder()
@@ -1187,13 +1197,13 @@ export async function execute(interaction) {
     const forecastDays = Number(interaction.options.getString('forecast_days') || '30');
     const metric = interaction.options.getString('metric') || 'pp';
     const span = interaction.options.getString('span') || '30d';
-    const period =
-      span === 'all'
-        ? { label: '全期間', ms: null, isAllTime: true }
-        : PERIOD_MAP[span];
+    const period = span === 'all'
+      ? { ms: null, isAllTime: true }
+      : PERIOD_MAP[span];
+    const periodLabel = getPeriodLabel(span === 'all' ? 'all' : span, lang);
 
     if (!period) {
-      return interaction.editReply('❌ span の指定が不正です');
+      return interaction.editReply(translate(lang, 'osu.graph.invalidSpan'));
     }
 
     // 複数人比較モード
@@ -1215,7 +1225,7 @@ export async function execute(interaction) {
       }
 
       if (usernames.length < 2) {
-        return interaction.editReply('❌ 複数人比較には最低2人のユーザー名が必要です');
+        return interaction.editReply(translate(lang, 'osu.graph.compareNeedUsers'));
       }
 
       const now = new Date();
@@ -1299,25 +1309,35 @@ export async function execute(interaction) {
       }
 
       if (userDatasets.length === 0) {
-        return interaction.editReply('❌ 有効なユーザーデータを取得できませんでした');
+        return interaction.editReply(translate(lang, 'osu.graph.noValidUsers'));
       }
 
-      const chartConfig = buildCompareUsersChartConfig({ userDatasets, metric });
+      const chartConfig = buildCompareUsersChartConfig({ userDatasets, metric }, lang);
       const renderResult = await buildChartRenderResult(chartConfig, 'osu-graph-compare.png');
       if (!renderResult.imageUrl) {
-        return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+        return interaction.editReply(translate(lang, 'osu.graph.tooManyPoints'));
       }
-      const samplingNote = buildSamplingNote(renderResult.chartMeta);
-      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
+      const samplingNote = buildSamplingNote(renderResult.chartMeta, lang);
+      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta, lang);
 
       const embed = new EmbedBuilder()
         .setColor('#6C5CE7')
-        .setTitle(`複数人比較: ${metricLabel(metric)} [${getModeLabel(mode)}]`)
-        .setDescription(`期間: ${period.label}\n比較人数: ${userDatasets.length}人${samplingNote}${deliveryNote}`)
+        .setTitle(translate(lang, 'osuGraph.compareTitle', {
+          metric: metricLabel(metric, lang),
+          mode: getModeLabel(mode)
+        }))
+        .setDescription(
+          `${translate(lang, 'osuGraph.compareDescription', {
+            period: periodLabel,
+            count: userDatasets.length
+          })}${samplingNote}${deliveryNote}`
+        )
         .addFields(
           userDatasets.map((data, index) => ({
             name: `${index + 1}. ${data.username}`,
-            value: `データ点数: ${data.values.filter(v => v !== null).length}`,
+            value: translate(lang, 'osuGraph.compareDataPoints', {
+              count: data.values.filter(v => v !== null).length
+            }),
             inline: true
           }))
         )
@@ -1363,7 +1383,7 @@ export async function execute(interaction) {
       const allPoints = buildBestScorePoints(bestScores, mode);
 
       if (allPoints.length === 0) {
-        return interaction.editReply('❌ 散布図を作成できるBestスコアデータがありませんでした');
+        return interaction.editReply(translate(lang, 'osu.graph.noBestScatterData'));
       }
 
       const filteredPoints = allPoints.filter(point => point.timestamp >= sinceDate.getTime());
@@ -1371,13 +1391,13 @@ export async function execute(interaction) {
       const points = period.isAllTime ? allPoints : useFallback ? allPoints : filteredPoints;
 
       if (points.length === 0) {
-        return interaction.editReply('❌ 指定期間に散布図化できるデータがありませんでした');
+        return interaction.editReply(translate(lang, 'osu.graph.noScatterInPeriod'));
       }
 
       const scatter = buildBestPpScatterChartConfig(points);
       const renderResult = await buildChartRenderResult(scatter.config, 'osu-graph-scatter.png');
       if (!renderResult.imageUrl) {
-        return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+        return interaction.editReply(translate(lang, 'osu.graph.tooManyPoints'));
       }
       const highestPp = Math.max(...points.map(point => point.pp));
       const regressionText =
@@ -1385,29 +1405,37 @@ export async function execute(interaction) {
           ? 'N/A'
           : `${scatter.slope >= 0 ? '+' : '-'}${Math.abs(scatter.slope).toFixed(2)} pp/play`;
       const fallbackNote = useFallback
-        ? '\n指定期間データが少ないため、Topスコア全体で描画しています'
+        ? translate(lang, 'osuGraph.scatterFallback')
         : '';
-      const samplingNote = buildSamplingNote(renderResult.chartMeta);
-      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
+      const samplingNote = buildSamplingNote(renderResult.chartMeta, lang);
+      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta, lang);
 
       const embed = new EmbedBuilder()
         .setColor('#7F8CFF')
-        .setTitle(`${user.username} のBest PP散布図 [${getModeLabel(mode)}]`)
+        .setTitle(translate(lang, 'osuGraph.scatterTitle', {
+          username: user.username,
+          mode: getModeLabel(mode)
+        }))
         .setURL(`https://osu.ppy.sh/users/${user.id}`)
-        .setDescription(`${period.label} / Top${BEST_SCATTER_LIMIT}由来の散布図${fallbackNote}${samplingNote}${deliveryNote}`)
+        .setDescription(
+          `${translate(lang, 'osuGraph.scatterDescription', {
+            period: periodLabel,
+            limit: BEST_SCATTER_LIMIT
+          })}${fallbackNote}${samplingNote}${deliveryNote}`
+        )
         .addFields(
           {
-            name: '統計',
+            name: translate(lang, 'osuGraph.statsTitle'),
             value: [
-              `点数: ${formatNumber(points.length)}件`,
-              `回帰傾き: ${regressionText}`,
-              `最高PP: ${highestPp.toFixed(2)}pp`
+              translate(lang, 'osuGraph.statsPoints', { count: formatNumber(points.length) }),
+              translate(lang, 'osuGraph.statsSlope', { slope: regressionText }),
+              translate(lang, 'osuGraph.statsMaxPp', { pp: `${highestPp.toFixed(2)}pp` })
             ].join('\n'),
             inline: true
           },
           {
-            name: '最近の点',
-            value: buildBestScoreSampleTable(points),
+            name: translate(lang, 'osuGraph.recentPointsTitle'),
+            value: buildBestScoreSampleTable(points, lang),
             inline: false
           }
         )
@@ -1451,7 +1479,7 @@ export async function execute(interaction) {
       const series = buildPpRankSeries(dailyPoints);
 
       if (series.length === 0) {
-        return interaction.editReply('❌ PP+Rankグラフ化できる履歴データがありませんでした');
+        return interaction.editReply(translate(lang, 'osu.graph.noPpRankHistory'));
       }
 
       const labels = series.map(point => point.label);
@@ -1463,7 +1491,7 @@ export async function execute(interaction) {
       if (chartType === 'pp_rank_forecast') {
         const forecast = buildForecastSeries(series, Math.max(1, Math.min(90, forecastDays)));
         if (forecast.length === 0) {
-          return interaction.editReply('❌ 予測用の履歴データが不足しています');
+          return interaction.editReply(translate(lang, 'osu.graph.noForecastData'));
         }
 
         const forecastLabels = forecast.map(point => point.label);
@@ -1491,9 +1519,15 @@ export async function execute(interaction) {
         const ppSlope = calcPerDayTrend(series, 'pp');
         const rankSlope = calcPerDayTrend(series, 'rank');
         forecastNote = [
-          `予測日数: ${Math.max(1, Math.min(90, forecastDays))}日`,
-          `PP傾き: ${formatSignedDecimal(ppSlope)}pp/日`,
-          `Rank傾き: ${formatSignedDecimal(rankSlope)}位/日`
+          translate(lang, 'osuGraph.forecastDays', {
+            days: Math.max(1, Math.min(90, forecastDays))
+          }),
+          translate(lang, 'osuGraph.forecastPpSlope', {
+            slope: formatSignedDecimal(ppSlope)
+          }),
+          translate(lang, 'osuGraph.forecastRankSlope', {
+            slope: formatSignedDecimal(rankSlope)
+          })
         ].join('\n');
       } else {
         const chartConfig = buildPpRankDualChartConfig({ labels, ppValues, rankValues });
@@ -1501,45 +1535,61 @@ export async function execute(interaction) {
       }
 
       if (!renderResult?.imageUrl) {
-        return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+        return interaction.editReply(translate(lang, 'osu.graph.tooManyPoints'));
       }
 
-      const samplingNote = buildSamplingNote(renderResult.chartMeta);
-      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
+      const samplingNote = buildSamplingNote(renderResult.chartMeta, lang);
+      const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta, lang);
 
       const rankHistoryNote =
         rankHistoryPoints.length > 0
-          ? '\nRankは公開履歴で連携前データを補完しています'
+          ? translate(lang, 'osuGraph.rankHistoryNote')
           : '';
 
       const embed = new EmbedBuilder()
         .setColor('#5DADE2')
         .setTitle(
           chartType === 'pp_rank_forecast'
-            ? `${user.username} のPP+Rank予測 [${getModeLabel(mode)}]`
-            : `${user.username} のPP+Rank推移 [${getModeLabel(mode)}]`
+            ? translate(lang, 'osuGraph.ppRankForecastTitle', {
+                username: user.username,
+                mode: getModeLabel(mode)
+              })
+            : translate(lang, 'osuGraph.ppRankTrendTitle', {
+                username: user.username,
+                mode: getModeLabel(mode)
+              })
         )
         .setURL(`https://osu.ppy.sh/users/${user.id}`)
         .setDescription(
           chartType === 'pp_rank_forecast'
-            ? `${period.label} / 予測グラフ${rankHistoryNote}${samplingNote}${deliveryNote}`
-            : `${period.label} / 二軸グラフ${rankHistoryNote}${samplingNote}${deliveryNote}`
+            ? `${translate(lang, 'osuGraph.ppRankForecastDescription', {
+                period: periodLabel
+              })}${rankHistoryNote}${samplingNote}${deliveryNote}`
+            : `${translate(lang, 'osuGraph.ppRankDualDescription', {
+                period: periodLabel
+              })}${rankHistoryNote}${samplingNote}${deliveryNote}`
         )
         .addFields(
           {
-            name: '現在値',
+            name: translate(lang, 'osuGraph.currentStatsTitle'),
             value: [
-              `PP: ${formatMetricValue('pp', stats.pp)}`,
+              `PP: ${formatMetricValue('pp', stats.pp, lang)}`,
               `Rank: ${formatRank(stats.global_rank)}`
             ].join('\n'),
             inline: true
           },
           ...(chartType === 'pp_rank_forecast'
-            ? [{ name: '予測パラメータ', value: forecastNote, inline: true }]
+            ? [{
+                name: translate(lang, 'osuGraph.forecastParamsTitle'),
+                value: forecastNote,
+                inline: true
+              }]
             : []),
           {
-            name: `日次サマリー (最新${Math.min(DAILY_TABLE_MAX_ROWS, series.length)}日)`,
-            value: buildPpRankSummaryTable(series),
+            name: translate(lang, 'osuGraph.dailySummaryTitle', {
+              days: Math.min(DAILY_TABLE_MAX_ROWS, series.length)
+            }),
+            value: buildPpRankSummaryTable(series, lang),
             inline: false
           }
         )
@@ -1575,13 +1625,13 @@ export async function execute(interaction) {
     }
 
     if (values.length === 0) {
-      return interaction.editReply('❌ グラフ化できる履歴データがありませんでした');
+      return interaction.editReply(translate(lang, 'osu.graph.noMetricHistory'));
     }
 
-    const chartConfig = buildChartConfig({ labels, values, metric });
+    const chartConfig = buildChartConfig({ labels, values, metric }, lang);
     const renderResult = await buildChartRenderResult(chartConfig, 'osu-graph-metric.png');
     if (!renderResult.imageUrl) {
-      return interaction.editReply('❌ グラフデータ量が多すぎるため描画できませんでした。spanを短くして再実行してください');
+      return interaction.editReply(translate(lang, 'osu.graph.tooManyPoints'));
     }
 
     const currentValue = metric === 'global_rank'
@@ -1590,28 +1640,38 @@ export async function execute(interaction) {
 
     const dataSourceNote =
       metric === 'global_rank' && rankHistoryPoints.length > 0
-        ? '\n順位は osu! 公開履歴で連携前データを補完しています'
+        ? translate(lang, 'osuGraph.rankHistoryNote')
         : '';
-    const samplingNote = buildSamplingNote(renderResult.chartMeta);
-    const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta);
+    const samplingNote = buildSamplingNote(renderResult.chartMeta, lang);
+    const deliveryNote = buildChartDeliveryNote(renderResult.chartMeta, lang);
 
     const embed = new EmbedBuilder()
       .setColor('#00A8FF')
-      .setTitle(`${user.username} の推移グラフ [${getModeLabel(mode)}]`)
+      .setTitle(translate(lang, 'osuGraph.metricTrendTitle', {
+        username: user.username,
+        mode: getModeLabel(mode)
+      }))
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription(`${period.label} / 指標: ${metricLabel(metric)}${dataSourceNote}${samplingNote}${deliveryNote}`)
+      .setDescription(
+        `${translate(lang, 'osuGraph.metricDescription', {
+          period: periodLabel,
+          metric: metricLabel(metric, lang)
+        })}${dataSourceNote}${samplingNote}${deliveryNote}`
+      )
       .addFields(
         {
-          name: '現在値',
+          name: translate(lang, 'osuGraph.currentStatsTitle'),
           value:
             currentValue === null
               ? 'N/A'
-              : formatMetricValue(metric === 'global_rank' ? 'global_rank' : metric, currentValue),
+              : formatMetricValue(metric === 'global_rank' ? 'global_rank' : metric, currentValue, lang),
           inline: true
         },
         {
-          name: `日次サマリー (最新${Math.min(DAILY_TABLE_MAX_ROWS, series.length)}日)`,
-          value: buildDailySummaryTable(series, metric),
+          name: translate(lang, 'osuGraph.dailySummaryTitle', {
+            days: Math.min(DAILY_TABLE_MAX_ROWS, series.length)
+          }),
+          value: buildDailySummaryTable(series, metric, lang),
           inline: false
         }
       )

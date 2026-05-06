@@ -21,9 +21,9 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+  const selected = interaction.options.getString('lang');
 
   try {
-    const selected = interaction.options.getString('lang');
     if (selected) {
       await setUserLanguage(interaction.user.id, selected);
       const label = getLanguageLabel(selected);
@@ -39,6 +39,7 @@ export async function execute(interaction) {
     );
   } catch (error) {
     log(`/language エラー: ${error.message}`, 'error');
-    return interaction.editReply('❌ 設定に失敗しました');
+    const lang = selected || await resolveUserLanguage(interaction.user.id).catch(() => 'ja');
+    return interaction.editReply(translate(lang, 'language.failed'));
   }
 }

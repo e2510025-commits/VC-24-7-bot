@@ -57,10 +57,10 @@ function toFiniteNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function buildScoreTitle(score) {
-  const artist = score?.beatmapset?.artist || 'Unknown Artist';
-  const title = score?.beatmapset?.title || 'Unknown Title';
-  const diff = score?.beatmap?.version || 'Unknown Diff';
+function buildScoreTitle(score, lang) {
+  const artist = score?.beatmapset?.artist || translate(lang, 'osuTopplays.unknownArtist');
+  const title = score?.beatmapset?.title || translate(lang, 'osuTopplays.unknownTitle');
+  const diff = score?.beatmap?.version || translate(lang, 'osuTopplays.unknownDiff');
   return `${artist} - ${title} [${diff}]`;
 }
 
@@ -140,30 +140,38 @@ export async function execute(interaction) {
         const url = Number.isFinite(scoreId)
           ? `https://osu.ppy.sh/scores/${score.mode || mode}/${Math.trunc(scoreId)}`
           : `https://osu.ppy.sh/users/${user.id}`;
-        return `[${buildScoreTitle(score)}](${url}) ${pp === null ? 'N/A' : `${pp.toFixed(2)}pp`}`;
+        return `[${buildScoreTitle(score, lang)}](${url}) ${pp === null ? 'N/A' : `${pp.toFixed(2)}pp`}`;
       });
 
     const embed = new EmbedBuilder()
       .setColor('#00CEC9')
-      .setTitle(`${user.username} Top Plays 変化追跡 [${getModeLabel(mode)}]`)
+      .setTitle(translate(lang, 'osuTopplays.title', {
+        username: user.username,
+        mode: getModeLabel(mode)
+      }))
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription(`比較範囲: Top ${limit}`)
+      .setDescription(translate(lang, 'osuTopplays.description', { limit }))
       .addFields(
         {
-          name: 'サマリー',
+          name: translate(lang, 'osuTopplays.summaryTitle'),
           value: [
-            `新規ランクイン: ${formatNumber(added.length)}`,
-            `圏外に移動: ${formatNumber(removed.length)}`,
-            `順位上昇譜面数: ${formatNumber(improvedPositions)}`,
-            `TopPP合計: ${currentPpSum.toFixed(2)}pp`
+            `${translate(lang, 'osuTopplays.added')}: ${formatNumber(added.length)}`,
+            `${translate(lang, 'osuTopplays.removed')}: ${formatNumber(removed.length)}`,
+            `${translate(lang, 'osuTopplays.improved')}: ${formatNumber(improvedPositions)}`,
+            `${translate(lang, 'osuTopplays.totalPp')}: ${currentPpSum.toFixed(2)}pp`
           ].join('\n'),
           inline: true
         },
         {
-          name: '前回比較',
+          name: translate(lang, 'osuTopplays.previousTitle'),
           value: previous
-            ? `前回取得: ${toDiscordTimestamp(previous.captured_at)}\n前回TopPP合計: ${toFiniteNumber(previous.top_pp_sum) === null ? 'N/A' : `${Number(previous.top_pp_sum).toFixed(2)}pp`}`
-            : '初回実行のため、今回の結果をベースラインとして保存しました',
+            ? translate(lang, 'osuTopplays.previousLine', {
+                time: toDiscordTimestamp(previous.captured_at),
+                total: toFiniteNumber(previous.top_pp_sum) === null
+                  ? 'N/A'
+                  : `${Number(previous.top_pp_sum).toFixed(2)}pp`
+              })
+            : translate(lang, 'osuTopplays.firstRun'),
           inline: true
         }
       )
@@ -171,7 +179,7 @@ export async function execute(interaction) {
 
     if (addedLines.length > 0) {
       embed.addFields({
-        name: '新規ランクイン詳細',
+        name: translate(lang, 'osuTopplays.addedDetailsTitle'),
         value: addedLines.join('\n'),
         inline: false
       });

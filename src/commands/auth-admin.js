@@ -3,8 +3,8 @@ import { getAuthSettings, upsertAuthSettings } from '../database/authSettings.js
 import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
-function roleLabel(id) {
-  if (!id) return '未設定';
+function roleLabel(id, lang) {
+  if (!id) return translate(lang, 'common.unset');
   return `<@&${id}>`;
 }
 
@@ -55,7 +55,7 @@ export async function execute(interaction) {
     if (subcommand === 'show') {
       const settings = await getAuthSettings(interaction.guildId);
       return interaction.editReply(
-        translate(lang, 'authAdmin.show', { role: roleLabel(settings.verified_role_id) })
+        translate(lang, 'authAdmin.show', { role: roleLabel(settings.verified_role_id, lang) })
       );
     }
 
@@ -77,6 +77,8 @@ export async function execute(interaction) {
     return interaction.editReply(translate(lang, 'common.unknownSubcommand'));
   } catch (error) {
     log(`/auth-admin エラー: ${error.message}`, 'error');
-    return interaction.editReply(`❌ 設定更新中にエラーが発生しました: ${error.message}`);
+    return interaction.editReply(
+      translate(lang, 'authAdmin.failed', { error: error.message })
+    );
   }
 }

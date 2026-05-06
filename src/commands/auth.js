@@ -9,7 +9,7 @@ import {
 } from 'discord.js';
 import { getAuthSettings } from '../database/authSettings.js';
 import { setUserLanguage } from '../database/userSettings.js';
-import { resolveUserLanguage, translate, translateAll } from '../utils/i18n.js';
+import { resolveUserLanguage, translate } from '../utils/i18n.js';
 import { log } from '../utils/logger.js';
 
 const AUTH_QUESTIONS = [
@@ -98,13 +98,13 @@ export async function showAuthModal(interaction) {
     const issuedAt = Date.now();
     const modal = new ModalBuilder()
       .setCustomId(`auth-verify:${question.id}:${issuedAt}`)
-      .setTitle('認証テスト');
+      .setTitle(translate(lang, 'auth.modalTitle'));
 
     const answerInput = new TextInputBuilder()
       .setCustomId('answer')
       .setLabel(question.text)
       .setStyle(TextInputStyle.Short)
-      .setPlaceholder('数字で入力')
+      .setPlaceholder(translate(lang, 'auth.answerPlaceholder'))
       .setRequired(true);
 
     modal.addComponents(new ActionRowBuilder().addComponents(answerInput));
@@ -123,16 +123,16 @@ export async function execute(interaction) {
 }
 
 export async function handleAuthModalSubmit(interaction) {
+  const lang = await resolveUserLanguage(interaction.user.id);
   if (!interaction.guildId) {
     return interaction.reply({
-      content: '❌ サーバー内で実行してください',
+      content: translate(lang, 'common.guildOnly'),
       flags: [MessageFlags.Ephemeral]
     });
   }
 
   const [, questionId, issuedAtRaw] = interaction.customId.split(':');
   const question = AUTH_QUESTIONS.find(item => item.id === questionId);
-  const lang = await resolveUserLanguage(interaction.user.id);
   if (!question) {
     return interaction.reply({
       content: translate(lang, 'auth.questionMissing'),
@@ -206,7 +206,7 @@ export async function handleAuthModalSubmit(interaction) {
 
     await member.roles.add(role);
     await interaction.reply({
-      content: translateAll('auth.success', { role: `${role}` }),
+      content: translate(lang, 'auth.success', { role: `${role}` }),
       flags: [MessageFlags.Ephemeral]
     });
 

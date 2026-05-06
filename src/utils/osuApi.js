@@ -360,18 +360,20 @@ export async function fetchOsuUser(usernameOrId, mode = null) {
   throw new OsuApiError('指定した osu! ユーザーが見つかりませんでした', 404);
 }
 
-export async function fetchRecentScores(userIdOrName, mode = 'osu', limit = 1) {
+export async function fetchRecentScores(userIdOrName, mode = 'osu', limit = 1, options = {}) {
   const target = String(userIdOrName || '').trim();
   if (!target) {
     throw new OsuApiError('osu! ユーザー名を指定してください', 400);
   }
 
   const normalizedMode = normalizeOsuMode(mode);
+  const offset = Number(options?.offset ?? 0);
 
   return osuGet(`/api/v2/users/${encodeURIComponent(target)}/scores/recent`, {
     mode: normalizedMode,
     include_fails: 1,
-    limit
+    limit,
+    offset: Number.isFinite(offset) && offset > 0 ? Math.trunc(offset) : undefined
   }, { noCache: true });
 }
 
@@ -422,20 +424,27 @@ export function formatRatioPercent(value) {
   return `${(numericValue * 100).toFixed(2)}%`;
 }
 
-export function formatPlayTime(seconds) {
+export function formatPlayTime(seconds, lang = 'ja') {
   const total = Number(seconds);
   if (!Number.isFinite(total) || total < 0) {
     return 'N/A';
   }
+
+  const unitsByLang = {
+    ja: { day: '日', hour: '時間', minute: '分' },
+    en: { day: 'd', hour: 'h', minute: 'm' },
+    ko: { day: '일', hour: '시간', minute: '분' }
+  };
+  const units = unitsByLang[lang] || unitsByLang.ja;
 
   const days = Math.floor(total / 86_400);
   const hours = Math.floor((total % 86_400) / 3_600);
   const minutes = Math.floor((total % 3_600) / 60);
 
   const parts = [];
-  if (days > 0) parts.push(`${days}日`);
-  if (hours > 0) parts.push(`${hours}時間`);
-  parts.push(`${minutes}分`);
+  if (days > 0) parts.push(`${days}${units.day}`);
+  if (hours > 0) parts.push(`${hours}${units.hour}`);
+  parts.push(`${minutes}${units.minute}`);
 
   return parts.join(' ');
 }

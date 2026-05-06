@@ -36,22 +36,18 @@ export const data = new SlashCommandBuilder()
       )
   );
 
-function buildAuthPanelEmbed() {
+function buildAuthPanelEmbed(lang) {
   return new EmbedBuilder()
     .setColor('#2D9CDB')
-    .setTitle('認証 / Verification / 인증')
-    .setDescription(
-      '日本語: 下の「認証」ボタンを押して、簡単な計算に答えてください。\n' +
-      'English: Press the "Verify" button below and answer a simple math question.\n' +
-      '한국어: 아래 "인증" 버튼을 눌러 간단한 계산 문제를 풀어주세요.'
-    )
-    .setFooter({ text: 'osu! 連携は /osu-link' });
+    .setTitle(translate(lang, 'authPanel.title'))
+    .setDescription(translate(lang, 'authPanel.description'))
+    .setFooter({ text: translate(lang, 'authPanel.footer') });
 }
 
-function buildAuthPanelRow() {
+function buildAuthPanelRow(lang) {
   const button = new ButtonBuilder()
     .setCustomId('auth-panel:open')
-    .setLabel('認証 / Verify / 인증')
+    .setLabel(translate(lang, 'authPanel.button'))
     .setStyle(ButtonStyle.Primary);
 
   return new ActionRowBuilder().addComponents(button);
@@ -75,8 +71,8 @@ export async function execute(interaction) {
       return interaction.editReply(translate(lang, 'authPanel.notText'));
     }
 
-    const embed = buildAuthPanelEmbed();
-    const row = buildAuthPanelRow();
+    const embed = buildAuthPanelEmbed(lang);
+    const row = buildAuthPanelRow(lang);
 
     await channel.send({ embeds: [embed], components: [row] });
     return interaction.editReply(

@@ -113,17 +113,20 @@ function formatSignedInteger(value) {
   return `${sign}${formatNumber(absValue)}`;
 }
 
-function formatPercentDelta(delta, baseline) {
+function formatPercentDelta(delta, baseline, lang) {
   const deltaValue = toFiniteNumber(delta);
   const baselineValue = toFiniteNumber(baseline);
 
   if (deltaValue === null || baselineValue === null || baselineValue === 0) {
-    return '前比 N/A';
+    return translate(lang, 'osuGrowth.percentDeltaNa');
   }
 
   const ratio = (deltaValue / baselineValue) * 100;
   const sign = ratio > 0 ? '+' : ratio < 0 ? '-' : '±';
-  return `前比 ${sign}${Math.abs(ratio).toFixed(2)}%`;
+  return translate(lang, 'osuGrowth.percentDelta', {
+    sign,
+    value: Math.abs(ratio).toFixed(2)
+  });
 }
 
 function formatRank(rank) {
@@ -148,7 +151,7 @@ function formatRankDelta(previousRank, currentRank) {
   return `${formatRank(prev)} -> ${formatRank(curr)} (${marker})`;
 }
 
-function formatDurationDelta(seconds) {
+function formatDurationDelta(seconds, lang) {
   const numeric = toFiniteNumber(seconds);
   if (numeric === null) {
     return 'N/A';
@@ -161,16 +164,16 @@ function formatDurationDelta(seconds) {
   const minutes = Math.floor((totalSeconds % 3_600) / 60);
 
   const parts = [];
-  if (days > 0) parts.push(`${days}日`);
-  if (hours > 0) parts.push(`${hours}時間`);
-  parts.push(`${minutes}分`);
+  if (days > 0) parts.push(translate(lang, 'osuGrowth.days', { value: days }));
+  if (hours > 0) parts.push(translate(lang, 'osuGrowth.hours', { value: hours }));
+  parts.push(translate(lang, 'osuGrowth.minutes', { value: minutes }));
 
   return `${sign}${parts.join(' ')}`;
 }
 
-function buildWindowFieldValue(currentStats, snapshot) {
+function buildWindowFieldValue(currentStats, snapshot, lang) {
   if (!snapshot) {
-    return 'データ不足（この期間のスナップショットがありません）';
+    return translate(lang, 'osuGrowth.windowNoData');
   }
 
   const currentPp = toFiniteNumber(currentStats.pp);
@@ -188,11 +191,11 @@ function buildWindowFieldValue(currentStats, snapshot) {
     currentPlayCount !== null && prevPlayCount !== null ? currentPlayCount - prevPlayCount : null;
 
   return [
-    `PP: ${formatSignedDecimal(ppDelta)}pp (${formatPercentDelta(ppDelta, prevPp)})`,
-    `プレイ時間: ${formatDurationDelta(playTimeDelta)} (${formatPercentDelta(playTimeDelta, prevPlayTime)})`,
-    `プレイ回数: ${formatSignedInteger(playCountDelta)} (${formatPercentDelta(playCountDelta, prevPlayCount)})`,
-    `順位: ${formatRankDelta(snapshot.global_rank, currentStats.global_rank)}`,
-    `比較基準: ${toDiscordTimestamp(snapshot.captured_at)}`
+    `${translate(lang, 'osuGrowth.pp')}: ${formatSignedDecimal(ppDelta)}pp (${formatPercentDelta(ppDelta, prevPp, lang)})`,
+    `${translate(lang, 'osuGrowth.playTime')}: ${formatDurationDelta(playTimeDelta, lang)} (${formatPercentDelta(playTimeDelta, prevPlayTime, lang)})`,
+    `${translate(lang, 'osuGrowth.playCount')}: ${formatSignedInteger(playCountDelta)} (${formatPercentDelta(playCountDelta, prevPlayCount, lang)})`,
+    `${translate(lang, 'osuGrowth.rank')}: ${formatRankDelta(snapshot.global_rank, currentStats.global_rank)}`,
+    `${translate(lang, 'osuGrowth.baseline')}: ${toDiscordTimestamp(snapshot.captured_at)}`
   ].join('\n');
 }
 
@@ -200,19 +203,19 @@ function resolveBaseline(baselineKey, now) {
   switch (baselineKey) {
     case 'prev_day':
       return {
-        label: '前日比',
+        labelKey: 'osuGrowth.baselinePrevDay',
         beforeDate: new Date(now - 24 * 60 * 60 * 1000)
       };
     case 'prev_week_same_day':
       return {
-        label: '前週同曜日比',
+        labelKey: 'osuGrowth.baselinePrevWeek',
         beforeDate: new Date(now - 7 * 24 * 60 * 60 * 1000)
       };
     case 'month_start': {
       const date = new Date(now);
       const monthStart = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
       return {
-        label: '月初比',
+        labelKey: 'osuGrowth.baselineMonthStart',
         beforeDate: monthStart
       };
     }
@@ -252,9 +255,9 @@ function formatRankMovement(previousRank, currentRank) {
   return `↓${formatNumber(Math.abs(delta))}`;
 }
 
-function buildDailySummaryTable(points) {
+function buildDailySummaryTable(points, lang) {
   if (!Array.isArray(points) || points.length === 0) {
-    return 'データ不足';
+    return translate(lang, 'osuGrowth.noData');
   }
 
   const rows = [];
@@ -275,7 +278,7 @@ function buildDailySummaryTable(points) {
     );
   }
 
-  const header = 'Date | PP | DeltaPP | Rank';
+  const header = translate(lang, 'osuGrowth.dailyHeader');
   const content = ['```', header, ...rows, '```'].join('\n');
 
   if (content.length <= 1000) {
@@ -312,9 +315,9 @@ function formatProjectedRankDelta(delta) {
   return `↓${formatNumber(abs)}`;
 }
 
-function buildForecastFieldValue(points) {
+function buildForecastFieldValue(points, lang) {
   if (!Array.isArray(points) || points.length < 2) {
-    return 'データ不足（予測には2日以上の履歴が必要です）';
+    return translate(lang, 'osuGrowth.forecastNeedDays', { days: 2 });
   }
 
   const first = points[0];
@@ -324,7 +327,7 @@ function buildForecastFieldValue(points) {
   const spanDays = (lastTime - firstTime) / (24 * 60 * 60 * 1000);
 
   if (!Number.isFinite(spanDays) || spanDays < 1) {
-    return 'データ不足（予測には1日以上の履歴が必要です）';
+    return translate(lang, 'osuGrowth.forecastNeedDays', { days: 1 });
   }
 
   const firstPp = toFiniteNumber(first.pp);
@@ -342,9 +345,9 @@ function buildForecastFieldValue(points) {
       : null;
 
   const windows = [
-    { label: '1日', days: 1 },
-    { label: '1週', days: 7 },
-    { label: '1ヶ月', days: 30 }
+    { label: translate(lang, 'osuGrowth.window1d'), days: 1 },
+    { label: translate(lang, 'osuGrowth.window1w'), days: 7 },
+    { label: translate(lang, 'osuGrowth.window1m'), days: 30 }
   ];
 
   return windows
@@ -353,7 +356,7 @@ function buildForecastFieldValue(points) {
       const rankDelta = formatProjectedRankDelta(
         rankPerDay === null ? null : rankPerDay * window.days
       );
-      return `${window.label}: PP ${ppDelta} / 順位 ${rankDelta}`;
+      return `${window.label}: ${translate(lang, 'osuGrowth.pp')} ${ppDelta} / ${translate(lang, 'osuGrowth.rank')} ${rankDelta}`;
     })
     .join('\n');
 }
@@ -372,12 +375,17 @@ function formatRankImprovement(value) {
   return numeric > 0 ? `↑${formatNumber(abs)}` : `↓${formatNumber(abs)}`;
 }
 
-function buildPeriodComparisonLine({ label, currentDelta, previousDelta, formatter }) {
+function buildPeriodComparisonLine({ label, currentDelta, previousDelta, formatter }, lang) {
   if (currentDelta === null || previousDelta === null) {
-    return `${label}: データ不足`;
+    return translate(lang, 'osuGrowth.periodNoData', { label });
   }
 
-  return `${label}: ${formatter(currentDelta)} / 前期間: ${formatter(previousDelta)} / 差分: ${formatter(currentDelta - previousDelta)}`;
+  return translate(lang, 'osuGrowth.periodLine', {
+    label,
+    current: formatter(currentDelta),
+    previous: formatter(previousDelta),
+    diff: formatter(currentDelta - previousDelta)
+  });
 }
 
 function calcPpPerDay(points, lookbackDays) {
@@ -406,32 +414,36 @@ function calcPpPerDay(points, lookbackDays) {
   return (toFiniteNumber(last.pp) - toFiniteNumber(first.pp)) / spanDays;
 }
 
-function buildTargetPpForecast(points, currentPp, targetPp) {
+function buildTargetPpForecast(points, currentPp, targetPp, lang) {
   const current = toFiniteNumber(currentPp);
   const target = toFiniteNumber(targetPp);
 
   if (current === null || target === null) {
-    return 'データ不足';
+    return translate(lang, 'osuGrowth.noData');
   }
 
   if (target <= current) {
-    return `目標 ${target.toFixed(2)}pp は既に達成済みです`; 
+    return translate(lang, 'osuGrowth.targetAlreadyMet', { target: target.toFixed(2) });
   }
 
   const need = target - current;
   const slopes = [
-    { label: '7日傾向', perDay: calcPpPerDay(points, 7) },
-    { label: '30日傾向', perDay: calcPpPerDay(points, 30) }
+    { label: translate(lang, 'osuGrowth.trend7d'), perDay: calcPpPerDay(points, 7) },
+    { label: translate(lang, 'osuGrowth.trend30d'), perDay: calcPpPerDay(points, 30) }
   ];
 
   return slopes
     .map(({ label, perDay }) => {
       if (perDay === null || perDay <= 0) {
-        return `${label}: 予測不可 (成長傾き不足)`;
+        return translate(lang, 'osuGrowth.trendUnavailable', { label });
       }
 
       const days = Math.ceil(need / perDay);
-      return `${label}: 約${formatNumber(days)}日 (傾き ${formatSignedDecimal(perDay)}pp/日)`;
+      return translate(lang, 'osuGrowth.trendEstimate', {
+        label,
+        days: formatNumber(days),
+        slope: formatSignedDecimal(perDay)
+      });
     })
     .join('\n');
 }
@@ -520,8 +532,8 @@ export async function execute(interaction) {
       });
 
       baselineComparison = {
-        label: baselineInfo.label,
-        value: buildWindowFieldValue(stats, snapshot)
+        label: translate(lang, baselineInfo.labelKey),
+        value: buildWindowFieldValue(stats, snapshot, lang)
       };
     }
 
@@ -562,21 +574,21 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor('#FF66AA')
-      .setTitle(`${user.username} の成長率 [${modeLabel}]`)
+      .setTitle(translate(lang, 'osuGrowth.title', { username: user.username, mode: modeLabel }))
       .setURL(`https://osu.ppy.sh/users/${user.id}`)
-      .setDescription('前比を表示します（実行時に履歴を自動保存）')
-      .setFooter({ text: '初回実行直後は履歴不足になる場合があります。時間をおいて再実行してください。' })
+      .setDescription(translate(lang, 'osuGrowth.description'))
+      .setFooter({ text: translate(lang, 'osuGrowth.footer') })
       .setTimestamp(new Date());
 
     const fields = [
       {
-        name: '現在値',
+        name: translate(lang, 'osuGrowth.currentStats'),
         value: [
-          `PP: ${formatNumber(stats.pp)}pp`,
-          `順位: ${currentRank}`,
-          `国別順位 (${user.country_code || 'N/A'}): ${currentCountryRank}`,
-          `プレイ時間: ${formatPlayTime(stats.play_time)}`,
-          `プレイ回数: ${formatNumber(stats.play_count)}`
+          `${translate(lang, 'osuGrowth.pp')}: ${formatNumber(stats.pp)}pp`,
+          `${translate(lang, 'osuGrowth.rank')}: ${currentRank}`,
+          `${translate(lang, 'osuGrowth.countryRank', { country: user.country_code || 'N/A' })}: ${currentCountryRank}`,
+          `${translate(lang, 'osuGrowth.playTime')}: ${formatPlayTime(stats.play_time, lang)}`,
+          `${translate(lang, 'osuGrowth.playCount')}: ${formatNumber(stats.play_count)}`
         ].join('\n')
       }
     ];
@@ -585,17 +597,17 @@ export async function execute(interaction) {
       fields.push(
         {
           name: '24h',
-          value: buildWindowFieldValue(stats, windowSnapshots[0]),
+          value: buildWindowFieldValue(stats, windowSnapshots[0], lang),
           inline: false
         },
         {
           name: '1week',
-          value: buildWindowFieldValue(stats, windowSnapshots[1]),
+          value: buildWindowFieldValue(stats, windowSnapshots[1], lang),
           inline: false
         },
         {
           name: '1month',
-          value: buildWindowFieldValue(stats, windowSnapshots[2]),
+          value: buildWindowFieldValue(stats, windowSnapshots[2], lang),
           inline: false
         }
       );
@@ -608,8 +620,10 @@ export async function execute(interaction) {
     }
 
     fields.push({
-      name: `日次サマリー (最新${Math.min(DAILY_SUMMARY_DAYS, recentSummaryPoints.length)}日)`,
-      value: buildDailySummaryTable(recentSummaryPoints),
+      name: translate(lang, 'osuGrowth.dailySummaryTitle', {
+        days: Math.min(DAILY_SUMMARY_DAYS, recentSummaryPoints.length)
+      }),
+      value: buildDailySummaryTable(recentSummaryPoints, lang),
       inline: false
     });
 
@@ -650,46 +664,46 @@ export async function execute(interaction) {
         : null;
 
     fields.push({
-      name: '期間比較 (今週vs先週 / 今月vs先月)',
+      name: translate(lang, 'osuGrowth.periodCompareTitle'),
       value: [
         buildPeriodComparisonLine({
-          label: 'PP 週次',
+          label: translate(lang, 'osuGrowth.ppWeekly'),
           currentDelta: currentWeekPpDelta,
           previousDelta: previousWeekPpDelta,
           formatter: value => `${formatSignedDecimal(value)}pp`
-        }),
+        }, lang),
         buildPeriodComparisonLine({
-          label: '順位 週次',
+          label: translate(lang, 'osuGrowth.rankWeekly'),
           currentDelta: currentWeekRankDelta,
           previousDelta: previousWeekRankDelta,
           formatter: formatRankImprovement
-        }),
+        }, lang),
         buildPeriodComparisonLine({
-          label: 'PP 月次',
+          label: translate(lang, 'osuGrowth.ppMonthly'),
           currentDelta: currentMonthPpDelta,
           previousDelta: previousMonthPpDelta,
           formatter: value => `${formatSignedDecimal(value)}pp`
-        }),
+        }, lang),
         buildPeriodComparisonLine({
-          label: '順位 月次',
+          label: translate(lang, 'osuGrowth.rankMonthly'),
           currentDelta: currentMonthRankDelta,
           previousDelta: previousMonthRankDelta,
           formatter: formatRankImprovement
-        })
+        }, lang)
       ].join('\n'),
       inline: false
     });
 
     fields.push({
-      name: '成長予測 (直近30日傾向)',
-      value: buildForecastFieldValue(dailySummaryPoints),
+      name: translate(lang, 'osuGrowth.forecastTitle'),
+      value: buildForecastFieldValue(dailySummaryPoints, lang),
       inline: false
     });
 
     if (targetPp !== null) {
       fields.push({
-        name: `目標PPシミュレーター (${targetPp.toFixed(2)}pp)`,
-        value: buildTargetPpForecast(dailySummaryPoints, stats.pp, targetPp),
+        name: translate(lang, 'osuGrowth.targetTitle', { target: targetPp.toFixed(2) }),
+        value: buildTargetPpForecast(dailySummaryPoints, stats.pp, targetPp, lang),
         inline: false
       });
     }

@@ -35,19 +35,19 @@ function requireAdmin(interaction) {
   return member.permissions.has(PermissionFlagsBits.ManageGuild);
 }
 
-function channelLabel(id) {
-  if (!id) return '未設定';
+function channelLabel(id, lang) {
+  if (!id) return translate(lang, 'common.unset');
   return `<#${id}>`;
 }
 
-function roleLabel(id) {
-  if (!id) return '未設定';
+function roleLabel(id, lang) {
+  if (!id) return translate(lang, 'common.unset');
   return `<@&${id}>`;
 }
 
-function weekdayLabel(value) {
+function weekdayLabel(value, lang) {
   const found = WEEKDAY_CHOICES.find(item => item.value === Number(value));
-  return found ? found.name : String(value);
+  return found ? translate(lang, `osuAdmin.weekday.${found.value}`) : String(value);
 }
 
 function toInt(value, fallback) {
@@ -194,36 +194,46 @@ export async function execute(interaction) {
       const settings = await getGuildOsuSettings(guildId);
       const embed = new EmbedBuilder()
         .setColor('#6C5CE7')
-        .setTitle('osu! サーバー設定')
+        .setTitle(translate(lang, 'osuAdmin.title'))
         .addFields(
           {
-            name: '通知チャンネル',
-            value: `成長アラート: ${channelLabel(settings.alert_channel_id)}\n週次レポート: ${channelLabel(settings.report_channel_id)}\nリアルタイムスコア: ${channelLabel(settings.realtime_score_channel_id)}\n日次プレイ履歴: ${channelLabel(settings.daily_history_channel_id)}`,
+            name: translate(lang, 'osuAdmin.channelsTitle'),
+            value: [
+              `${translate(lang, 'osuAdmin.channel.alert')}: ${channelLabel(settings.alert_channel_id, lang)}`,
+              `${translate(lang, 'osuAdmin.channel.report')}: ${channelLabel(settings.report_channel_id, lang)}`,
+              `${translate(lang, 'osuAdmin.channel.realtime')}: ${channelLabel(settings.realtime_score_channel_id, lang)}`,
+              `${translate(lang, 'osuAdmin.channel.daily')}: ${channelLabel(settings.daily_history_channel_id, lang)}`
+            ].join('\n'),
             inline: false
           },
           {
-            name: '重要更新ロール',
-            value: roleLabel(settings.important_update_role_id),
+            name: translate(lang, 'osuAdmin.roleTitle'),
+            value: roleLabel(settings.important_update_role_id, lang),
             inline: false
           },
           {
-            name: '閾値',
-            value: `PP: +${Number(settings.alert_pp_threshold).toFixed(2)}\n順位: +${toInt(settings.alert_rank_threshold, 500)}`,
+            name: translate(lang, 'osuAdmin.thresholdTitle'),
+            value: [
+              `${translate(lang, 'osuAdmin.pp')}: +${Number(settings.alert_pp_threshold).toFixed(2)}`,
+              `${translate(lang, 'osuAdmin.rank')}: +${toInt(settings.alert_rank_threshold, 500)}`
+            ].join('\n'),
             inline: true
           },
           {
-            name: 'スナップショット',
-            value: `${toInt(settings.snapshot_interval_minutes, 60)} 分間隔`,
+            name: translate(lang, 'osuAdmin.snapshotTitle'),
+            value: translate(lang, 'osuAdmin.snapshotInterval', {
+              minutes: toInt(settings.snapshot_interval_minutes, 60)
+            }),
             inline: true
           },
           {
-            name: '週次レポート',
+            name: translate(lang, 'osuAdmin.reportTitle'),
             value:
-              `曜日: ${weekdayLabel(settings.report_weekday)}\n` +
-              `時刻(UTC): ${toInt(settings.report_hour_utc, 12)}時\n` +
-              `期間: ${settings.report_period}\n` +
-              `指標: ${metricLabel(settings.report_metric)}\n` +
-              `TOP: ${toInt(settings.report_top, 10)}`,
+              `${translate(lang, 'osuAdmin.reportWeekday')}: ${weekdayLabel(settings.report_weekday, lang)}\n` +
+              `${translate(lang, 'osuAdmin.reportHour')}: ${toInt(settings.report_hour_utc, 12)}\n` +
+              `${translate(lang, 'osuAdmin.reportPeriod')}: ${settings.report_period}\n` +
+              `${translate(lang, 'osuAdmin.reportMetric')}: ${metricLabel(settings.report_metric, lang)}\n` +
+              `${translate(lang, 'osuAdmin.reportTop')}: ${toInt(settings.report_top, 10)}`,
             inline: false
           }
         )
@@ -245,16 +255,16 @@ export async function execute(interaction) {
       
       if (type === 'alert') {
         patch = { alert_channel_id: channel.id };
-        typeName = '成長アラート';
+        typeName = translate(lang, 'osuAdmin.channel.alert');
       } else if (type === 'report') {
         patch = { report_channel_id: channel.id };
-        typeName = '週次レポート';
+        typeName = translate(lang, 'osuAdmin.channel.report');
       } else if (type === 'realtime-score') {
         patch = { realtime_score_channel_id: channel.id };
-        typeName = 'リアルタイムスコア';
+        typeName = translate(lang, 'osuAdmin.channel.realtime');
       } else if (type === 'daily-history') {
         patch = { daily_history_channel_id: channel.id };
-        typeName = '日次プレイ履歴';
+        typeName = translate(lang, 'osuAdmin.channel.daily');
       } else {
         return interaction.editReply(translate(lang, 'osuAdmin.channelTypeUnknown'));
       }
