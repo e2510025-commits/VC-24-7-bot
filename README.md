@@ -92,7 +92,6 @@ LAVALINK_PORT=443
 LAVALINK_PASSWORD=youshallnotpass
 LAVALINK_SECURE=true
 
-# Koyebデプロイ時の設定（自動停止防止）
 KOYEB_PUBLIC_DOMAIN=your-app.koyeb.app
 PORT=8000
 ```
@@ -160,3 +159,33 @@ http://localhost:3000 でアクセスできます。
 3. `/play`で音楽を再生
 4. `/osu-link` でosu!アカウントを連携
 5. 各種osu!コマンドを実行
+2. `/play 曲名` で音楽を検索
+3. Select Menuから曲を選択
+4. 操作パネルのボタンで再生をコントロール
+5. 通話ログは自動的にダッシュボードに保存されます
+
+## トラブルシューティング
+
+### Lavalinkに接続できない
+
+- ノードの稼働状況を確認
+- ホスト名、ポート、パスワードを確認
+
+### PostgreSQLに接続できない
+
+- `DATABASE_URL`を確認
+- SSL設定が必要な環境では`ssl`が有効か確認
+
+### Botが起動しない
+
+- Node.jsのバージョンを確認（20以上）
+- `npm install` を再実行
+- ログを確認
+
+## ライセンス
+
+MIT License
+
+## 貢献
+
+プルリクエストを歓迎します。
