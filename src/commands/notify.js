@@ -59,7 +59,6 @@ async function ensureNotifyRole(interaction, roleName, lang) {
 
   return { role, me };
 }
-
 export const data = new SlashCommandBuilder()
   .setName('notify')
   .setDescription('募集を通知します')
