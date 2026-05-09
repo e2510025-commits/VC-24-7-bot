@@ -1,4 +1,4 @@
-import { formatNumber, formatPlayTime } from './osuApi.js';
+import { formatNumber, formatPercent, formatPlayTime } from './osuApi.js';
 
 export const PERIOD_MAP = {
   '24h': { label: '24h', ms: 24 * 60 * 60 * 1000 },
@@ -53,21 +53,33 @@ const METRIC_LABELS = {
     play_time: 'プレイ時間',
     play_count: 'プレイ回数',
     rank_improvement: '順位上昇',
-    global_rank: 'グローバル順位'
+    global_rank: 'グローバル順位',
+    country_rank: '国別順位',
+    accuracy: '精度',
+    level: 'レベル',
+    max_combo: '最大コンボ'
   },
   en: {
     pp: 'PP',
     play_time: 'Play time',
     play_count: 'Play count',
     rank_improvement: 'Rank gain',
-    global_rank: 'Global rank'
+    global_rank: 'Global rank',
+    country_rank: 'Country rank',
+    accuracy: 'Accuracy',
+    level: 'Level',
+    max_combo: 'Max combo'
   },
   ko: {
     pp: 'PP',
     play_time: '플레이 시간',
     play_count: '플레이 횟수',
     rank_improvement: '순위 상승',
-    global_rank: '글로벌 랭크'
+    global_rank: '글로벌 랭크',
+    country_rank: '국가 랭크',
+    accuracy: '정확도',
+    level: '레벨',
+    max_combo: '최대 콤보'
   }
 };
 
@@ -118,6 +130,18 @@ export function getStatsValue(stats, metric) {
       return toFiniteNumber(stats.play_count);
     case 'global_rank':
       return toFiniteNumber(stats.global_rank);
+    case 'country_rank':
+      return toFiniteNumber(stats.country_rank);
+    case 'accuracy':
+      return toFiniteNumber(stats.hit_accuracy);
+    case 'level': {
+      const level = stats.level || {};
+      const current = toFiniteNumber(level.current) ?? 0;
+      const progress = toFiniteNumber(level.progress) ?? 0;
+      return current + progress / 100;
+    }
+    case 'max_combo':
+      return toFiniteNumber(stats.maximum_combo);
     default:
       return null;
   }
@@ -180,6 +204,14 @@ export function formatMetricValue(metric, value, lang = 'ja') {
       return `${formatNumber(Math.trunc(numeric))}`;
     case 'global_rank':
       return `#${formatNumber(Math.trunc(numeric))}`;
+    case 'country_rank':
+      return `#${formatNumber(Math.trunc(numeric))}`;
+    case 'accuracy':
+      return formatPercent(numeric);
+    case 'level':
+      return numeric.toFixed(2);
+    case 'max_combo':
+      return `${formatNumber(Math.trunc(numeric))}x`;
     default:
       return `${numeric}`;
   }

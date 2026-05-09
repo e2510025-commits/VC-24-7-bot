@@ -23,6 +23,7 @@ import * as osuProfileCommand from './commands/osu-profile.js';
 import * as osuRecentCommand from './commands/osu-recent.js';
 import * as osuGrowthCommand from './commands/osu-growth.js';
 import * as osuRankingCommand from './commands/osu-ranking.js';
+import * as osuServerRankingCommand from './commands/osu-server-ranking.js';
 import * as osuGraphCommand from './commands/osu-graph.js';
 import * as osuGoalCommand from './commands/osu-goal.js';
 import * as osuAnalysisCommand from './commands/osu-analysis.js';
@@ -35,6 +36,7 @@ import * as osuRoleSetupCommand from './commands/osu-role-setup.js';
 import * as languageCommand from './commands/language.js';
 import * as cloneCategoryCommand from './commands/clone-category.js';
 import * as pingCommand from './commands/ping.js';
+import * as timezoneCommand from './commands/timezone.js';
 
 config();
 
@@ -63,6 +65,7 @@ client.commands.set(osuProfileCommand.data.name, osuProfileCommand);
 client.commands.set(osuRecentCommand.data.name, osuRecentCommand);
 client.commands.set(osuGrowthCommand.data.name, osuGrowthCommand);
 client.commands.set(osuRankingCommand.data.name, osuRankingCommand);
+client.commands.set(osuServerRankingCommand.data.name, osuServerRankingCommand);
 client.commands.set(osuGraphCommand.data.name, osuGraphCommand);
 client.commands.set(osuGoalCommand.data.name, osuGoalCommand);
 client.commands.set(osuAnalysisCommand.data.name, osuAnalysisCommand);
@@ -75,6 +78,7 @@ client.commands.set(osuRoleSetupCommand.data.name, osuRoleSetupCommand);
 client.commands.set(languageCommand.data.name, languageCommand);
 client.commands.set(cloneCategoryCommand.data.name, cloneCategoryCommand);
 client.commands.set(pingCommand.data.name, pingCommand);
+client.commands.set(timezoneCommand.data.name, timezoneCommand);
 
 // 音楽プレイヤー初期化
 client.musicPlayer = new MusicPlayer(client);

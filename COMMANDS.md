@@ -13,6 +13,7 @@
 - /osu-recent [username] [mode] - 最新プレイ表示
 - /osu-growth [username] [mode] [baseline] [target_pp] - 成長率表示
 - /osu-ranking [period] [metric] [mode] [top] - サーバー内成長ランキング
+- /osu-server-ranking [metric] [mode] [top] - サーバー内現在ランキング
 - /osu-graph [mode] [span] [type] - グラフ表示
 - /osu-goal set|status|clear - 目標設定・確認
 - /osu-analysis [username] [mode] [limit] - プレイ分析
@@ -29,6 +30,7 @@
 - /disconnect - VC切断
 - /play 曲名/URL - 音楽再生
 - /volume level - 音量設定
+- /timezone base:<国/タイムゾーン> target:<国/タイムゾーン> - 時差表示
 
 - /clone-category source:<カテゴリ> name:<新カテゴリ名> - カテゴリ複製（管理者）
 
@@ -46,6 +48,7 @@
 - /osu-recent [username] [mode] - Show recent play
 - /osu-growth [username] [mode] [baseline] [target_pp] - Show growth
 - /osu-ranking [period] [metric] [mode] [top] - Server ranking
+- /osu-server-ranking [metric] [mode] [top] - Server current ranking
 - /osu-graph [mode] [span] [type] - Show graph
 - /osu-goal set|status|clear - Manage goals
 - /osu-analysis [username] [mode] [limit] - Play analysis
@@ -62,5 +65,6 @@
 - /disconnect - Disconnect VC
 - /play query/URL - Play music
 - /volume level - Set volume
+- /timezone base:<country/timezone> target:<country/timezone> - Show time difference
 
 - /clone-category source:<category> name:<new name> - Clone category (admin)
