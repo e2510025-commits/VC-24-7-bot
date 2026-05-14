@@ -407,11 +407,6 @@ const MESSAGES = {
     'notify.roleMissing': '❌ Notify role {role} not found. Run /notify-role-setup first',
     'notify.roleCreateFailed': '❌ Failed to create notify role {role}.',
     'notify.roleUpdateFailed': '❌ Failed to update notify role {role}.',
-<<<<<<< HEAD
-    'notify.roleCreateFailed': '❌ Failed to create notify role {role}.',
-    'notify.roleUpdateFailed': '❌ Failed to update notify role {role}.',
-=======
->>>>>>> 28fa43c (Add notify roles and recruitment command)
     'notify.cooldown': '❌ You can notify only once per hour. Please wait {minutes} minutes',
     'notify.defaultText': 'Recruiting now',
     'notify.botNoMentionPerm': '❌ The bot cannot mention {role}. Make it mentionable or grant mention permission',
@@ -798,11 +793,6 @@ const MESSAGES = {
     'notify.roleMissing': '❌ 알림 역할 {role} 을(를) 찾을 수 없습니다. /notify-role-setup 을 먼저 실행해 주세요',
     'notify.roleCreateFailed': '❌ 알림 역할 {role} 생성에 실패했습니다.',
     'notify.roleUpdateFailed': '❌ 알림 역할 {role} 업데이트에 실패했습니다.',
-<<<<<<< HEAD
-    'notify.roleCreateFailed': '❌ 알림 역할 {role} 생성에 실패했습니다.',
-    'notify.roleUpdateFailed': '❌ 알림 역할 {role} 업데이트에 실패했습니다.',
-=======
->>>>>>> 28fa43c (Add notify roles and recruitment command)
     'notify.cooldown': '❌ 알림은 1시간에 1회만 가능합니다. {minutes}분 후 다시 시도해 주세요',
     'notify.defaultText': '모집 중입니다',
     'notify.botNoMentionPerm': '❌ 봇이 {role} 을(를) 멘션할 수 없습니다. 역할을 멘션 가능하게 하거나 권한을 부여해 주세요',
