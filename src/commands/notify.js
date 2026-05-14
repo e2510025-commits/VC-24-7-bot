@@ -18,6 +18,48 @@ function getRemainingMinutes(lastUsed) {
   return Math.ceil(remainingMs / 60000);
 }
 
+async function ensureNotifyRole(interaction, roleName, lang) {
+  const guild = interaction.guild;
+  const me = guild.members.me || await guild.members.fetchMe().catch(() => null);
+  if (!me) {
+    return { error: translate(lang, 'notify.botMissing') };
+  }
+
+  let role = guild.roles.cache.find(item => item.name === roleName) || null;
+  if (!role) {
+    if (!me.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      return { error: translate(lang, 'common.botNoRolePerm') };
+    }
+
+    try {
+      role = await guild.roles.create({
+        name: roleName,
+        mentionable: true,
+        permissions: [],
+        reason: `${interaction.user.tag} が募集通知ロール作成`
+      });
+    } catch (error) {
+      log(`/notify ロール作成失敗: ${roleName} - ${error.message}`, 'error');
+      return { error: translate(lang, 'notify.roleCreateFailed', { role: roleName }) };
+    }
+  }
+
+  if (!role.mentionable && !me.permissions.has(PermissionFlagsBits.MentionEveryone)) {
+    if (me.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      try {
+        await role.setMentionable(true, '募集通知ロールをメンション可能に変更');
+      } catch (error) {
+        log(`/notify ロール更新失敗: ${roleName} - ${error.message}`, 'error');
+        return { error: translate(lang, 'notify.roleUpdateFailed', { role: roleName }) };
+      }
+    } else {
+      return { error: translate(lang, 'notify.botNoMentionPerm', { role: roleName }) };
+    }
+  }
+
+  return { role, me };
+}
+
 export const data = new SlashCommandBuilder()
   .setName('notify')
   .setDescription('募集を通知します')
@@ -61,19 +103,9 @@ export async function execute(interaction) {
 
     const mode = interaction.options.getString('mode', true);
     const roleName = MODE_ROLE_MAP[mode];
-    const role = interaction.guild.roles.cache.find(item => item.name === roleName);
-
-    if (!role) {
-      return interaction.editReply(translate(lang, 'notify.roleMissing', { role: roleName }));
-    }
-
-    const me = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
-    if (!me) {
-      return interaction.editReply(translate(lang, 'notify.botMissing'));
-    }
-
-    if (!me.permissions.has(PermissionFlagsBits.MentionEveryone) && !role.mentionable) {
-      return interaction.editReply(translate(lang, 'notify.botNoMentionPerm', { role: roleName }));
+    const { role, error } = await ensureNotifyRole(interaction, roleName, lang);
+    if (!role || error) {
+      return interaction.editReply(error || translate(lang, 'common.commandFailed'));
     }
 
     const rawText = interaction.options.getString('text') || '';
