@@ -176,16 +176,5 @@ http://localhost:3000 でアクセスできます。
 - `DATABASE_URL`を確認
 - SSL設定が必要な環境では`ssl`が有効か確認
 
-### Botが起動しない
 
-- Node.jsのバージョンを確認（20以上）
-- `npm install` を再実行
-- ログを確認
 
-## ライセンス
-
-MIT License
-
-## 貢献
-
-プルリクエストを歓迎します。
