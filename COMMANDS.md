@@ -22,9 +22,14 @@
 - /osu-topplays [username] [mode] [limit] - Top Plays 変化追跡
 - /osu-league [period] [mode] [top] - フレンドリーグ
 - /osu-dm [enable] - 日次履歴DMの設定
+- /osu-recruit [mode] [text] [room_name] [room_link] - osu!募集
+- /osu-recruit-admin show|set-channel - 募集チャンネル設定（管理者）
+- /notify [mode] [text] - 募集通知
+- /notify-role-setup - 募集通知用ロール作成（管理者）
 
 - /osu-role-setup - 自動付与ロールの作成（管理者）
 - /osu-admin show|set-channel|set-threshold|set-snapshot|set-report|set-role - osu!通知設定（管理者）
+- /role-panel set-channel|add|remove|list|post - リアクションロールパネル（管理者）
 
 - /connect [channel] - VC接続
 - /disconnect - VC切断
@@ -57,9 +62,14 @@
 - /osu-topplays [username] [mode] [limit] - Top plays tracking
 - /osu-league [period] [mode] [top] - Friendly league
 - /osu-dm [enable] - Daily DM settings
+- /osu-recruit [mode] [text] [room_name] [room_link] - Post recruitment
+- /osu-recruit-admin show|set-channel - Recruit channel settings (admin)
+- /notify [mode] [text] - Recruitment notify
+- /notify-role-setup - Create notify roles (admin)
 
 - /osu-role-setup - Create auto-assign roles (admin)
 - /osu-admin show|set-channel|set-threshold|set-snapshot|set-report|set-role - osu! notification settings (admin)
+- /role-panel set-channel|add|remove|list|post - Reaction role panel (admin)
 
 - /connect [channel] - Connect to VC
 - /disconnect - Disconnect VC

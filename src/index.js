@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { Client, GatewayIntentBits, Collection, Partials } from 'discord.js';
 import { config } from 'dotenv';
 import { createServer } from 'http';
 import { MusicPlayer } from './music/player.js';
@@ -10,6 +10,8 @@ import { createMusicPanel } from './music/panel.js';
 import * as readyEvent from './events/ready.js';
 import * as voiceStateUpdateEvent from './events/voiceStateUpdate.js';
 import * as interactionCreateEvent from './events/interactionCreate.js';
+import * as messageReactionAddEvent from './events/messageReactionAdd.js';
+import * as messageReactionRemoveEvent from './events/messageReactionRemove.js';
 import * as playCommand from './commands/play.js';
 import * as connectCommand from './commands/connect.js';
 import * as disconnectCommand from './commands/disconnect.js';
@@ -24,6 +26,8 @@ import * as osuRecentCommand from './commands/osu-recent.js';
 import * as osuGrowthCommand from './commands/osu-growth.js';
 import * as osuRankingCommand from './commands/osu-ranking.js';
 import * as osuServerRankingCommand from './commands/osu-server-ranking.js';
+import * as osuRecruitCommand from './commands/osu-recruit.js';
+import * as osuRecruitAdminCommand from './commands/osu-recruit-admin.js';
 import * as osuGraphCommand from './commands/osu-graph.js';
 import * as osuGoalCommand from './commands/osu-goal.js';
 import * as osuAnalysisCommand from './commands/osu-analysis.js';
@@ -33,9 +37,12 @@ import * as osuTopplaysCommand from './commands/osu-topplays.js';
 import * as osuLeagueCommand from './commands/osu-league.js';
 import * as osuAdminCommand from './commands/osu-admin.js';
 import * as osuRoleSetupCommand from './commands/osu-role-setup.js';
+import * as notifyRoleSetupCommand from './commands/notify-role-setup.js';
+import * as notifyCommand from './commands/notify.js';
 import * as languageCommand from './commands/language.js';
 import * as cloneCategoryCommand from './commands/clone-category.js';
 import * as pingCommand from './commands/ping.js';
+import * as rolePanelCommand from './commands/role-panel.js';
 import * as timezoneCommand from './commands/timezone.js';
 
 config();
@@ -46,8 +53,10 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent
-  ]
+  ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
 // コマンドとイベントの登録
@@ -66,6 +75,8 @@ client.commands.set(osuRecentCommand.data.name, osuRecentCommand);
 client.commands.set(osuGrowthCommand.data.name, osuGrowthCommand);
 client.commands.set(osuRankingCommand.data.name, osuRankingCommand);
 client.commands.set(osuServerRankingCommand.data.name, osuServerRankingCommand);
+client.commands.set(osuRecruitCommand.data.name, osuRecruitCommand);
+client.commands.set(osuRecruitAdminCommand.data.name, osuRecruitAdminCommand);
 client.commands.set(osuGraphCommand.data.name, osuGraphCommand);
 client.commands.set(osuGoalCommand.data.name, osuGoalCommand);
 client.commands.set(osuAnalysisCommand.data.name, osuAnalysisCommand);
@@ -75,9 +86,12 @@ client.commands.set(osuTopplaysCommand.data.name, osuTopplaysCommand);
 client.commands.set(osuLeagueCommand.data.name, osuLeagueCommand);
 client.commands.set(osuAdminCommand.data.name, osuAdminCommand);
 client.commands.set(osuRoleSetupCommand.data.name, osuRoleSetupCommand);
+client.commands.set(notifyRoleSetupCommand.data.name, notifyRoleSetupCommand);
+client.commands.set(notifyCommand.data.name, notifyCommand);
 client.commands.set(languageCommand.data.name, languageCommand);
 client.commands.set(cloneCategoryCommand.data.name, cloneCategoryCommand);
 client.commands.set(pingCommand.data.name, pingCommand);
+client.commands.set(rolePanelCommand.data.name, rolePanelCommand);
 client.commands.set(timezoneCommand.data.name, timezoneCommand);
 
 // 音楽プレイヤー初期化
@@ -87,6 +101,8 @@ client.musicPlayer = new MusicPlayer(client);
 client.once('clientReady', (...args) => readyEvent.execute(...args, client));
 client.on(voiceStateUpdateEvent.name, voiceStateUpdateEvent.execute);
 client.on(interactionCreateEvent.name, (...args) => interactionCreateEvent.execute(...args, client));
+client.on(messageReactionAddEvent.name, messageReactionAddEvent.execute);
+client.on(messageReactionRemoveEvent.name, messageReactionRemoveEvent.execute);
 
 // エラーハンドリング
 client.on('error', (error) => {

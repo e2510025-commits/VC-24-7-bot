@@ -5,6 +5,7 @@ const DEFAULTS = {
   report_channel_id: null,
   realtime_score_channel_id: null,
   daily_history_channel_id: null,
+  recruit_channel_id: null,
   important_update_role_id: null,
   alert_pp_threshold: 10,
   alert_rank_threshold: 500,
@@ -34,6 +35,7 @@ export async function getGuildOsuSettings(guildId) {
       report_channel_id,
       realtime_score_channel_id,
       daily_history_channel_id,
+      recruit_channel_id,
       important_update_role_id,
       alert_pp_threshold,
       alert_rank_threshold,
@@ -60,6 +62,7 @@ export async function getGuildOsuSettings(guildId) {
     report_channel_id: row.report_channel_id,
     realtime_score_channel_id: row.realtime_score_channel_id,
     daily_history_channel_id: row.daily_history_channel_id,
+    recruit_channel_id: row.recruit_channel_id,
     important_update_role_id: row.important_update_role_id,
     alert_pp_threshold: toNumber(row.alert_pp_threshold, DEFAULTS.alert_pp_threshold),
     alert_rank_threshold: Math.trunc(
@@ -96,6 +99,7 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       report_channel_id,
       realtime_score_channel_id,
       daily_history_channel_id,
+      recruit_channel_id,
       important_update_role_id,
       alert_pp_threshold,
       alert_rank_threshold,
@@ -107,13 +111,14 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       report_top,
       updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
     ON CONFLICT (guild_id)
     DO UPDATE SET
       alert_channel_id = EXCLUDED.alert_channel_id,
       report_channel_id = EXCLUDED.report_channel_id,
       realtime_score_channel_id = EXCLUDED.realtime_score_channel_id,
       daily_history_channel_id = EXCLUDED.daily_history_channel_id,
+      recruit_channel_id = EXCLUDED.recruit_channel_id,
       important_update_role_id = EXCLUDED.important_update_role_id,
       alert_pp_threshold = EXCLUDED.alert_pp_threshold,
       alert_rank_threshold = EXCLUDED.alert_rank_threshold,
@@ -130,6 +135,7 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       report_channel_id,
       realtime_score_channel_id,
       daily_history_channel_id,
+      recruit_channel_id,
       important_update_role_id,
       alert_pp_threshold,
       alert_rank_threshold,
@@ -146,6 +152,7 @@ export async function upsertGuildOsuSettings(guildId, partialSettings) {
       merged.report_channel_id ? String(merged.report_channel_id) : null,
       merged.realtime_score_channel_id ? String(merged.realtime_score_channel_id) : null,
       merged.daily_history_channel_id ? String(merged.daily_history_channel_id) : null,
+      merged.recruit_channel_id ? String(merged.recruit_channel_id) : null,
       merged.important_update_role_id ? String(merged.important_update_role_id) : null,
       toNumber(merged.alert_pp_threshold, DEFAULTS.alert_pp_threshold),
       Math.trunc(toNumber(merged.alert_rank_threshold, DEFAULTS.alert_rank_threshold)),
